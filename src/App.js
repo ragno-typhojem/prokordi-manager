@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 /*
-ProManager+ v28 — Teknik Özet (Geliştirici Yorumu)
+ProManager+ v28 ( önceki 28 versiyonu da çöpe attım say) — Teknik Özet (Geliştirici Yorumu)
 -------------------------------------------------
 Amaç:
 - Etkinlik ve gönüllü yönetimini merkezi VOLUNTEERS veri table kullanarak sağlamak.
@@ -285,11 +285,11 @@ export default function ProManagerApp() {
 
         <aside className="w-64 bg-[#0f172a] text-slate-300 flex flex-col shadow-xl z-20 print:hidden shrink-0">
           <div className="p-6 border-b border-slate-800">
-            <div className="flex items-center gap-2 text-indigo-400 mb-1">
-           <LayoutDashboard size={24} />
-           <h1 className="text-xl font-bold text-white tracking-wide">ProManager+</h1>
+            <div className="flex items-center gap-3">
+              <img src="/kordim.png" alt="ProKordiManager" className="w-11 h-11" />
+              <h1 className="text-xl font-bold text-white tracking-wide">KordiManager</h1>
             </div>
-            <p className="text-[10px] text-slate-500 font-medium tracking-widest uppercase pl-8">v28.0 Premium</p>
+            <p className="text-[10px] text-slate-500 font-medium tracking-widest uppercase pl-14">B.A.L.K.I.Z. V2.0</p>
           </div>
           <nav className="flex-1 p-4 space-y-1">
             <SidebarItem id="scheduler" icon={<Calendar size={25}/>} label="Etkinlik & Gönüllü" active={activeTab} onClick={setActiveTab} />
@@ -310,7 +310,9 @@ export default function ProManagerApp() {
             {activeTab === 'badges' && <><Users className="text-indigo-600" size={20}/> İsimlik Matbaası</>}
             {activeTab === 'minutes' && <><FileText className="text-indigo-600" size={20}/> Resmi Belge Yöneticisi</>}
             {activeTab === 'collage' && <><ImageIcon className="text-indigo-600" size={20}/> Görsel Kolaj Düzenleyici</>}
+          
           </h2>
+          <span className="text-slate-422">SAAT: {new Date().toLocaleTimeString('tr-TR')}</span>
           <button onClick={handlePrint} className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold transition-all shadow-sm">
             <Printer size={16} /> <span>Yazdır</span>
           </button>
@@ -363,16 +365,52 @@ const BalkizRainbowConsole = ({
       let msg = "";
       
       if (aiState === 'processing') {
-        msg = "Sistem taranıyor... Veriler analiz ediliyor... Optimizasyon başlıyor...";
+        const processingMessages = [
+          "Üstünde Çalışıyorum... Lütfen bekleyin.",
+          "Hesaplıyorum, biraz bekle...",
+          "Veriler işleniyor, yakında hazır olur.",
+          "Hesaplıyorum..."
+        ];
+        msg = processingMessages[Math.floor(Math.random() * processingMessages.length)];
       } else if (activeAction) {
-        msg = "Hizalama ve düzenleme işlemlerinizi takip ediyorum, oldukça estetik ilerliyor.";
+        const actionMessages = [
+          "Hizalama ve düzenleme işlemlerinizi takip ediyorum, oldukça estetik ilerliyor.",
+          "Pozisyon ayarlamalarını izliyorum, iyi görünüyor.",
+          "Her taşımayı gözlemliyorum, mükemmel hale geliyor.",
+          "Düzenlemeleri kaydediyorum, bir sorun görünmüyor."
+        ];
+        msg = actionMessages[Math.floor(Math.random() * actionMessages.length)];
       } else if (!hasDistributed && aiState === 'idle' && warnings.length === 0) {
-        const h = new Date().getHours();
-        msg = `${h < 12 ? 'Günaydın' : 'Merhaba'}. Ben B.A.L.K.I.Z. Sistemi organize etmeye hazırım.`;
+        const hour = new Date().getHours();
+        let greeting = 'Hey';
+        if (hour >= 5 && hour < 12) greeting = 'Günaydın';
+        else if (hour >= 12 && hour < 17) greeting = 'Tünaydın';
+        else if (hour >= 17 && hour < 21) greeting = 'İyi akşamlar';
+        else greeting = 'İyi Geceler🌘';
+        
+        const greetingMessages = [
+          `${greeting}. Ben B.A.L.K.I.Z. sana yardımcı olmaya hazırım.`,
+          `${greeting}. Ben buradayım.`,
+          `${greeting}. Hadi başlayalım!`,
+          `${greeting}. Her zaman yardım için buradayım.`
+        ];
+        msg = greetingMessages[Math.floor(Math.random() * greetingMessages.length)];
       } else if (hasDistributed && warnings.length === 0) {
-        msg = "Harika! Sistem kusursuz görünüyor. Tüm öğeler çakışmasız yerleştirildi.";
+        const successMessages = [
+          "Harika! Sistem kusursuz görünüyor. Tüm öğeler çakışmasız yerleştirildi.",
+          "Mükemmel! Dağıtım başarıyla tamamlandı, hiçbir sorun yok gibi.",
+          "Tüm gönüllüler optimum şekilde atanmış. Yine de Kontrol etmeni öneririm.",
+          "Süper! Çakışma kalmamış, her şey mükemmel durumda."
+        ];
+        msg = successMessages[Math.floor(Math.random() * successMessages.length)];
       } else if (warnings.length > 0) {
-        msg = `Analiz tamamlandı. ${warnings.length} adet dikkat gerektiren durum tespit ettim.`;
+        const warningMessages = [
+          `Göz attım. ${warnings.length} adet dikkat gerektiren durum tespit ettim.`,
+          `İnceledim. ${warnings.length} sorun var, ama düzeltebiliriz.`,
+          `Kontrol ettim. ${warnings.length} uyarı mevcut, bakabilir misin?`,
+          `Analiz tamamlandı. ${warnings.length} önemli nokta var.`
+        ];
+        msg = warningMessages[Math.floor(Math.random() * warningMessages.length)];
       }
 
       // Only update if message actually changed
@@ -1599,8 +1637,8 @@ function InfinityScheduler({ onNotify }) {
 
   // --- MODULE 3: COLLAGE APP ---
   function CollageApp({ onNotify }) {
-    const [projectTitle, setProjectTitle] = useState("GAZİ ÜNİVERSİTESİ PROJE KOLAJI");
-    const [projectAddress, setProjectAddress] = useState("Adres: Gazi Üniversitesi Teknoloji Fakültesi, Ankara");
+    const [projectTitle, setProjectTitle] = useState("İLKYAR ŞUBAT 2026 ANTALYA PROJESİ EKİBİ");
+    const [projectAddress, setProjectAddress] = useState("Adres: Çiğdem Mah. 1588.Sok. No:81 06580 Çankaya/ANKARA");
     
     const [volunteers, setVolunteers] = useState(db.load(DB_KEYS.COLLAGE_VOLUNTEERS, []));
     
@@ -1821,12 +1859,12 @@ function InfinityScheduler({ onNotify }) {
                       <span className="w-12 h-[2px] bg-indigo-100 group-hover/msg:w-20 transition-all duration-700"></span>
                   </div>
 
-                  <div className="w-full border-t border-slate-100 pt-2 pb-2">
+                  <div className="w-full border-t border-slate-100 pt-1 pb-0">
                       <textarea 
                           value={projectAddress} 
                           onChange={(e) => setProjectAddress(e.target.value)}
-                          className="w-full bg-transparent border-none outline-none font-sans text-slate-400 text-center font-bold resize-none leading-tight overflow-hidden"
-                          style={{ fontSize: volunteers.length > 12 ? '10px' : '11px' }}
+                          className="w-full bg-transparent border-none outline-none font-sans text-slate-600 text-center font-bold resize-none leading-tight overflow-hidden"
+                          style={{ fontSize: volunteers.length > 12 ? '10px' : '15px' }}
                           rows={1}
                       />
                   </div>
