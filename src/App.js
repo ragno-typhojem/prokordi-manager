@@ -35,16 +35,14 @@ const db = {
 // --- VERİ SENKRONİZASYON FONKSİYONU ---
 const syncVolunteers = () => {
   try {
-    // Ana gönüllü listesini al
+    // Ana merkezi gönüllü listesi
     const mainVolunteers = db.load(DB_KEYS.VOLUNTEERS, []);
     
-    // İsimlik modülü verileri
+    // Gönüllülerin özel özelliklerini koruyarak tek bir merkezi liste oluştur
     const nameTagVolunteers = db.load(DB_KEYS.NAMETAG_VOLUNTEERS, []);
-    
-    // Kolaj modülü verileri
     const collageVolunteers = db.load(DB_KEYS.COLLAGE_VOLUNTEERS, []);
     
-    // Tüm gönüllüleri birleştir
+    // Tüm gönüllü ID'lerini birleştir
     const allVolunteerIds = new Set([
       ...mainVolunteers.map(v => v.id),
       ...nameTagVolunteers.map(v => v.id),
@@ -54,22 +52,27 @@ const syncVolunteers = () => {
     // Birleştirilmiş gönüllü listesi
     const mergedVolunteers = [];
     
+    // Her gönüllüyü birleştir ve özel özellikleri koru
     allVolunteerIds.forEach(id => {
       // Her kaynaktan gönüllüyü bul
       const mainVol = mainVolunteers.find(v => v.id === id);
       const nameTagVol = nameTagVolunteers.find(v => v.id === id);
       const collageVol = collageVolunteers.find(v => v.id === id);
       
-      // Birleştirilmiş gönüllü
+      // Birleştirilmiş gönüllü - ana bilgileri ve özel özellikleri içerir
       const mergedVol = {
         id,
         name: (mainVol || nameTagVol || collageVol)?.name || "Gönüllü",
         capabilities: mainVol?.capabilities || [],
+        
+        // İsimlik özellikleri
         nameSize: nameTagVol?.nameSize || 60,
         nameY: nameTagVol?.nameY || 0,
         surnameSize: nameTagVol?.surnameSize || 12,
         surnameY: nameTagVol?.surnameY || 0,
         question: nameTagVol?.question || "",
+        
+        // Kolaj özellikleri
         photo: collageVol?.photo || null,
         scale: collageVol?.scale || 1,
         translateX: collageVol?.translateX || 0,
@@ -79,7 +82,7 @@ const syncVolunteers = () => {
       mergedVolunteers.push(mergedVol);
     });
     
-    // Tüm kaynaklara kaydet
+    // Tüm kaynaklara aynı merkezi listeyi kaydet
     db.save(DB_KEYS.VOLUNTEERS, mergedVolunteers);
     db.save(DB_KEYS.NAMETAG_VOLUNTEERS, mergedVolunteers);
     db.save(DB_KEYS.COLLAGE_VOLUNTEERS, mergedVolunteers);
@@ -91,13 +94,14 @@ const syncVolunteers = () => {
   }
 };
 
+
 const uuid = () => Math.random().toString(36).substr(2, 9);
 
 // --- MOCK VERİLER ---
 const MOCK_VOLUNTEERS_GENERAL = [
-  "Prof. Dr. Hüseyin Vural", "Ahmet Yılmaz", "Ayşe Demir", "Mehmet Öz", 
-  "Fatma Kara", "Can Yıldız", "Zeynep Su", "Burak Çelik", "Elif Nur",
-  "Cem Dere", "Seda Taş", "Oğuz Han", "Merve Gül", "Deniz Ak"
+  "Ahmet Yılmaz", "Ayşe Demir", "Berke Şimşekler", "Deniz Kaya", "Elif Acar",
+  "Fatma Kara", "Can Yıldız", "Zeynep Su", "Burak Çelik", "Elif Nur","Mert Öz",
+  "Cem Dere", "Seda Taş", "Oğuz Han", "Merve Gül", "Deniz Ak","Ece Polat","Emre Koç",
 ];
 
 // --- GÖRSELLER --- 
@@ -138,12 +142,39 @@ export default function ProManagerApp() {
         .font-comic { font-family: 'Comic Sans MS', 'Comic Sans', 'Comic Neue', cursive; }
         
         @media print {
-          body * { visibility: hidden; }
-          #printable-section, #printable-section * { visibility: visible; }
-          #printable-section { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; background: white; color: black; }
-          ::-webkit-scrollbar { display: none; }
-          .no-print { display: none !important; }
-        }
+  @page { margin: 0; size: A4 portrait; }
+  body { background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  
+  body * { visibility: hidden; }
+  #printable-section, #printable-section * { visibility: visible; }
+  #printable-section { 
+    position: absolute; 
+    left: 0; 
+    top: 0; 
+    width: 100%; 
+    margin: 0; 
+    padding: 0; 
+    background: white; 
+    color: black; 
+  }
+  
+  .no-print { display: none !important; }
+  
+  .print-container { width: 100%; display: block; }
+  .a4-page {
+     box-shadow: none !important;
+     margin: 0 !important;
+     width: 210mm !important;
+     height: 297mm !important;
+     max-height: 297mm !important;
+     overflow: hidden !important;
+     display: flex !important;
+     flex-direction: column !important;
+     page-break-after: always;
+  }
+  
+  ::-webkit-scrollbar { display: none; }
+}
 
         /* --- LIQUID ANIMATIONS --- */
         @keyframes liquid-blob-morph {
@@ -657,7 +688,7 @@ function InfinityScheduler({ onNotify }) {
                 return v;
             });
        const setVolunteers = (newVolunteers) => {
-        updateVolunteers(newVolunteers);
+        updatedVolunteers(newVolunteers);
   };
         }
     }
@@ -1254,43 +1285,37 @@ function NameTagApp({ onNotify }) {
     analyze();
   }, [volunteers, aiState]);
 
-  const handleAutoFix = (forceMock = false) => {
-    setAiState('processing');
-    setTimeout(() => {
-      const isDefaultList = volunteers.length <= 3 && volunteers[0]?.name === "Örnek İsim";
-      const isEmpty = volunteers.length === 0;
-      
-      let sourceData = [];
+const handleAutoFix = (forceMock = false) => {
+  setAiState('processing');
+  setTimeout(() => {
+    // Eğer mevcut veriler varsa onları koru, yoksa mock verileri kullan
+    const isDefaultList = volunteers.length <= 3 && volunteers[0]?.name === "Örnek İsim";
+    const isEmpty = volunteers.length === 0;
+    
+    let sourceData = [];
 
-      if (forceMock || isDefaultList || isEmpty) {
-          sourceData = MOCK_VOLUNTEERS_GENERAL.map((name, i) => ({
-             id: Date.now() + i,
-             name: name,
-             nameSize: 60, 
-             nameY: 0,
-             surnameSize: 12,
-             surnameY: 0,
-             question: ""
-          }));
-      } else {
-          sourceData = [...volunteers];
-      }
+    if (forceMock || isDefaultList || isEmpty) {
+        sourceData = MOCK_VOLUNTEERS_GENERAL.map((name, i) => ({
+           id: Date.now() + i,
+           name: name,
+           nameSize: 60, 
+           nameY: 0,
+           surnameSize: 12,
+           surnameY: 5,
+           question: ""
+        }));
+    } else {
+        sourceData = [...volunteers]; // Mevcut verileri koru
+    }
 
-      const formattedData = sourceData.map(v => ({
-          ...v,
-          name: v.name.toLowerCase().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-          nameSize: 60,
-          surnameSize: 12,
-          nameY: 0,
-          surnameY: 0
-      }));
+    // Sadece gerekirse güncelle
+    setVolunteers(sourceData);
+    setAiState('idle');
+    setActiveAction(null);
+    onNotify("İsimlikler düzenlendi!");
+  }, 1000);
+};
 
-      setVolunteers(formattedData);
-      setAiState('idle');
-      setActiveAction(null);
-      onNotify("İsimlikler düzenlendi!");
-    }, 1000);
-  };
 
   const addVolunteer = (name = "Yeni Gönüllü") => {
     const newVol = { id: Date.now(), name, nameSize: 60, nameY: 0, surnameSize: 12, surnameY: 0, question: "" };
@@ -1340,6 +1365,7 @@ function NameTagApp({ onNotify }) {
       return pages;
   };
 
+
   return (
     <div className="space-y-6">
       {/* --- BALKIZ & CONTROLS --- */}
@@ -1367,20 +1393,12 @@ function NameTagApp({ onNotify }) {
                <input type="range" min="70" max="100" value={globalScale} onChange={(e) => setGlobalScale(parseInt(e.target.value))} className="w-full h-2 bg-slate-100 rounded-lg cursor-pointer accent-indigo-600"/>
             </div>
 
-            <div className="relative flex items-end">
-                <button onClick={() => setShowVolunteersList(!showVolunteersList)} className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-slate-50 text-slate-700 hover:bg-slate-100 rounded-xl text-sm font-bold transition-all border border-slate-200">
-                  <Users size={16}/> Gönüllü Havuzu
-                </button>
-                {showVolunteersList && (
-                  <div className="absolute top-full right-0 mt-3 w-full bg-white rounded-2xl shadow-2xl border border-slate-100 p-3 z-50 h-72 overflow-y-auto animate-in fade-in zoom-in-95">
-                    <button onClick={() => { handleAutoFix(true); setShowVolunteersList(false); }} className="w-full text-left px-3 py-3 bg-indigo-50 text-indigo-700 font-bold rounded-xl text-xs mb-2 flex items-center gap-2"><Database size={14}/> Havuzun Tamamını Al</button>
-                    <button onClick={() => addVolunteer("Yeni Gönüllü")} className="w-full text-left px-3 py-3 hover:bg-green-50 text-green-700 font-bold rounded-xl text-xs mb-2 border-b border-slate-50">+ Boş Kart Ekle</button>
-                    {MOCK_VOLUNTEERS_GENERAL.map((v, i) => (
-                      <button key={i} onClick={() => addVolunteer(v)} className="w-full text-left px-3 py-2 hover:bg-slate-50 text-slate-600 rounded-lg text-xs block transition-colors">{v}</button>
-                    ))}
-                  </div>
-                )}
-             </div>
+            {/* BALKIZ Tuşu */}
+            <div className="flex items-end">
+              <button onClick={() => handleAutoFix(false)} className="w-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 text-white px-6 py-3 rounded-xl font-bold flex gap-2 items-center justify-center shadow-lg shadow-fuchsia-200 transform active:scale-95 transition-all">
+                <Wand2 size={18}/> B.A.L.K.I.Z. Düzenlesin
+              </button>
+            </div>
          </div>
       </div>
 
@@ -1492,31 +1510,34 @@ function CollageApp({ onNotify }) {
     setWarnings(issues);
   }, [volunteers]);
 
-  const handleAutoFix = useCallback((forceFull = false) => {
-    setAiState('processing');
-    setTimeout(() => {
-        let baseList = (forceFull || volunteers.length === 0) ? MOCK_VOLUNTEERS_GENERAL.map((name, i) => ({
-            id: Date.now() + i,
-            name: name,
-            photo: null,
-            scale: 1,
-            translateX: 0,
-            translateY: 0
-        })) : [...volunteers];
+const handleAutoFix = useCallback((forceFull = false) => {
+  setAiState('processing');
+  setTimeout(() => {
+      // Sadece boş ise veya zorla istenirse mock verileri kullan
+      let baseList = (forceFull || volunteers.length === 0) ? MOCK_VOLUNTEERS_GENERAL.map((name, i) => ({
+          id: Date.now() + i,
+          name: name,
+          photo: null,
+          scale: 1,
+          translateX: 0,
+          translateY: 0
+      })) : [...volunteers]; // Aksi halde mevcut verileri koru
 
-        const sorted = baseList.sort((a, b) => {
-            const isAVural = a.name.toLowerCase().includes("vural");
-            const isBVural = b.name.toLowerCase().includes("vural");
-            if (isAVural) return -1;
-            if (isBVural) return 1;
-            return a.name.localeCompare(b.name, 'tr');
-        });
+      // Sıralama yap
+      const sorted = baseList.sort((a, b) => {
+          const isAVural = a.name.toLowerCase().includes("vural");
+          const isBVural = b.name.toLowerCase().includes("vural");
+          if (isAVural) return -1;
+          if (isBVural) return 1;
+          return a.name.localeCompare(b.name, 'tr');
+      });
 
-        setVolunteers(sorted);
-        setAiState('idle');
-        onNotify("Kolaj düzenlendi!");
-    }, 1000);
-  }, [volunteers, onNotify]);
+      setVolunteers(sorted);
+      setAiState('idle');
+      onNotify("Kolaj düzenlendi!");
+  }, 1000);
+}, [volunteers, onNotify]);
+
 
   useEffect(() => {
     if (volunteers.length === 0) handleAutoFix(true);
@@ -1582,18 +1603,12 @@ function CollageApp({ onNotify }) {
                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5"><Maximize2 size={10}/> Kenar Payı</label>
                 <input type="range" min="0" max="30" value={pagePadding} onChange={(e) => setPagePadding(parseInt(e.target.value))} className="w-full accent-pink-600 cursor-pointer"/>
             </div>
-            <div className="relative">
-                <button onClick={() => setShowPool(!showPool)} className="w-full bg-slate-50 border border-slate-200 py-3 rounded-2xl font-black text-[10px] hover:bg-slate-100 flex items-center justify-center gap-2 transition-colors uppercase tracking-tight text-slate-500">
-                  <Users size={14}/> Gönüllü Yönetimi
-                </button>
-                {showPool && (
-                  <div className="absolute bottom-full right-0 mb-3 w-full bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 z-50 h-80 overflow-y-auto animate-in fade-in zoom-in-95">
-                    <button onClick={() => { handleAutoFix(true); setShowPool(false); }} className="w-full text-left px-3 py-3 bg-indigo-600 text-white font-black rounded-xl text-[10px] mb-2 flex items-center gap-2 shadow-lg shadow-indigo-100 uppercase tracking-tighter"><Database size={12}/> Tüm Listeyi Çek</button>
-                    {MOCK_VOLUNTEERS_GENERAL.map((name, i) => (
-                      <button key={i} onClick={() => { setVolunteers([...volunteers, {id: Date.now(), name, photo:null, scale:1, translateX:0, translateY:0}]); setShowPool(false); }} className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-slate-600 rounded-lg text-[10px] block transition-colors border-b border-slate-50">{name}</button>
-                    ))}
-                  </div>
-                )}
+            
+            {/* BALKIZ Tuşu */}
+            <div>
+              <button onClick={() => handleAutoFix(false)} className="w-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 text-white px-6 py-3 rounded-xl font-bold flex gap-2 items-center justify-center shadow-lg shadow-fuchsia-200 transform active:scale-95 transition-all">
+                <Wand2 size={18}/> B.A.L.K.I.Z. Düzenlesin
+              </button>
             </div>
          </div>
       </div>
