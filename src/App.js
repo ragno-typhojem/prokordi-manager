@@ -174,6 +174,25 @@ const IMAGES = {
   QUESTION_BG: "https://i.ibb.co/mVYxB8j2/Ekran-g-r-nt-s-2026-01-12-202232.png" 
 };
 
+// --- SAAT COMPONENT ---
+const Saat = () => {
+  const [time, setTime] = useState("");
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTime(new Date().toLocaleTimeString("tr-TR"));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <span className="text-slate-600">
+      SAAT: {time}
+    </span>
+  );
+};
+
 // --- MAIN APP ---
 export default function ProManagerApp() {
   const [activeTab, setActiveTab] = useState('scheduler');
@@ -305,19 +324,17 @@ export default function ProManagerApp() {
       {/* MAIN AREA */}
       <main className="flex-1 overflow-auto bg-[#f8fafc] relative print:bg-white print:p-0 print:overflow-visible">
         <header className="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-8 sticky top-0 z-30 print:hidden shadow-sm">
-          <h2 className="text-lg font-bold text-slate-800 tracking-tight flex items-center gap-2">
-            {activeTab === 'scheduler' && <><Calendar className="text-indigo-600" size={20}/> Akıllı Ders & Gönüllü Planlayıcı</>}
-            {activeTab === 'badges' && <><Users className="text-indigo-600" size={20}/> İsimlik Matbaası</>}
-            {activeTab === 'minutes' && <><FileText className="text-indigo-600" size={20}/> Resmi Belge Yöneticisi</>}
-            {activeTab === 'collage' && <><ImageIcon className="text-indigo-600" size={20}/> Görsel Kolaj Düzenleyici</>}
-          
-          </h2>
-          <span className="text-slate-422">SAAT: {new Date().toLocaleTimeString('tr-TR')}</span>
-          <button onClick={handlePrint} className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold transition-all shadow-sm">
-            <Printer size={16} /> <span>Yazdır</span>
-          </button>
+<h2 className="text-lg font-bold text-slate-800 tracking-tight flex items-center gap-2">
+  {activeTab === 'scheduler' && <><Calendar className="text-indigo-600" size={20}/> Akıllı Ders & Gönüllü Planlayıcı</>}
+  {activeTab === 'badges' && <><Users className="text-indigo-600" size={20}/> İsimlik Matbaası</>}
+  {activeTab === 'minutes' && <><FileText className="text-indigo-600" size={20}/> Resmi Belge Yöneticisi</>}
+  {activeTab === 'collage' && <><ImageIcon className="text-indigo-600" size={20}/> Görsel Kolaj Düzenleyici</>}
+</h2>
+<Saat />
+<button onClick={handlePrint} className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold transition-all shadow-sm">
+  <Printer size={16} /> <span>Yazdır</span>
+</button>
         </header>
-
         <div className="p-8 print:p-0 min-h-[calc(100vh-4rem)] text-slate-800 max-w-7xl mx-auto" id="printable-section">
           {renderContent()}
         </div>
