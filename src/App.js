@@ -82,11 +82,6 @@ Geliştirici Kuralları:
 - Branching: GitFlow veya trunk-based; mandatory PR review.
 - Migrations: Flyway/Liquibase; API Contract: OpenAPI 3.0 (mock server ile contract tests).
 
-Yol Haritası (Özet):
-- 0–4 hafta: VOLUNTEERS temel modeli, InfinityScheduler prototipi.
-- 1–3 ay: B.A.L.K.I.Z. entegrasyonu, NameTagApp yazıcı entegrasyonları.
-- 3–6 ay: CollageApp optimizasyonu, DocumentCreator şablon kütüphanesi, tam CI/CD ve monitoring.
-
 Notlar:
 - Tüm kritik işlemler idempotent olmalı; event log immutable; API çağrılarında idempotency header kullanın.
 - Silme işlemleri için kesin propagation garantisi gerekiyorsa distributed transaction yerine event-driven retry + dead-letter queue tercih edin.
