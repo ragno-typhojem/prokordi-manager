@@ -215,88 +215,159 @@ export default function ProManagerApp() {
 
   return (
     <div className="flex h-screen bg-slate-100 text-slate-900 font-sans overflow-hidden">
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700;800&display=swap');
-        .font-comic { font-family: 'Comic Sans MS', 'Comic Sans', 'Comic Neue', cursive; }
-        
-        @media print {
-          @page { margin: 0; size: A4 portrait; }
-          body { background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          body * { visibility: hidden; }
-          #printable-section, #printable-section * { visibility: visible; }
-          #printable-section { 
-            position: absolute; left: 0; top: 0; width: 100%; 
-            margin: 0; padding: 0; background: white; color: black; 
-          }
-          .no-print { display: none !important; }
-          .print-container { width: 100%; display: block; }
-          .a4-page {
-             box-shadow: none !important; margin: 0 !important;
-             width: 210mm !important; height: 297mm !important;
-             max-height: 297mm !important; overflow: hidden !important;
-             display: flex !important; flex-direction: column !important;
-             page-break-after: always;
-          }
-          ::-webkit-scrollbar { display: none; }
-        }
+<style>{`
+  @import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700;800&display=swap');
+  .font-comic { font-family: 'Comic Sans MS', 'Comic Sans', 'Comic Neue', cursive; }
+  
+  /* --- ANİMASYONLAR --- */
+  @keyframes liquid-blob-morph {
+    0% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
+    50% { border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%; }
+    100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
+  }
+  @keyframes rainbow-flow {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+  @keyframes breathe-idle {
+    0%, 100% { transform: scale(1); border-color: rgba(203, 213, 225, 0.5); }
+    50% { transform: scale(1.05); border-color: rgba(203, 213, 225, 1); }
+  }
+  @keyframes blink { 
+    0%, 100% { opacity: 1; } 
+    50% { opacity: 0; } 
+  }
 
-        /* --- LIQUID ANIMATIONS --- */
-        @keyframes liquid-blob-morph {
-          0% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
-          50% { border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%; }
-          100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
-        }
-        @keyframes rainbow-flow {
-          0% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
-        }
-        @keyframes breathe-idle {
-          0%, 100% { transform: scale(1); border-color: rgba(203, 213, 225, 0.5); }
-          50% { transform: scale(1.05); border-color: rgba(203, 213, 225, 1); }
-        }
+  .ai-avatar-wrapper { 
+    position: relative; width: 80px; height: 80px; 
+    display: flex; align-items: center; justify-content: center; 
+  }
+  .ai-rainbow-liquid {
+    position: absolute; inset: -5px;
+    background: linear-gradient(135deg, #ff0080, #7928ca, #4f46e5, #0ea5e9, #ff0080);
+    background-size: 300% 300%; opacity: 0; transition: all 0.5s ease;
+    z-index: 0; filter: blur(8px);
+  }
+  .ai-rainbow-liquid.active { 
+    opacity: 0.8; 
+    animation: liquid-blob-morph 4s ease-in-out infinite, rainbow-flow 3s linear infinite; 
+  }
+  .ai-core-container {
+    position: relative; width: 60px; height: 60px; background: white;
+    border-radius: 50%; z-index: 10; display: flex; align-items: center;
+    justify-content: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    border: 2px solid #e2e8f0; transition: all 0.3s ease;
+  }
+  .ai-core-container.active {
+    border-color: transparent; background: rgba(255, 255, 255, 0.9);
+  }
+  .ai-core-container.idle { 
+    animation: breathe-idle 4s ease-in-out infinite; 
+  }
+  /* Print sayfaları için özel class */
+.print-page {
+  width: 210mm;
+  height: 297mm;
+  min-height: 297mm;
+  page-break-after: always;
+  page-break-inside: avoid;
+  break-after: page;
+  break-inside: avoid;
+}
 
-        .ai-avatar-wrapper {
-          position: relative; width: 80px; height: 80px;
-          display: flex; align-items: center; justify-content: center;
-        }
-        .ai-rainbow-liquid {
-          position: absolute; inset: -5px;
-          background: linear-gradient(135deg, #ff0080, #7928ca, #4f46e5, #0ea5e9, #ff0080);
-          background-size: 300% 300%; opacity: 0; transition: all 0.5s ease;
-          z-index: 0; filter: blur(8px);
-        }
-        .ai-rainbow-liquid.active {
-          opacity: 0.8;
-          animation: liquid-blob-morph 4s ease-in-out infinite, rainbow-flow 3s linear infinite;
-        }
-        .ai-core-container {
-          position: relative; width: 60px; height: 60px; background: white;
-          border-radius: 50%; z-index: 10; display: flex; align-items: center;
-          justify-content: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-          border: 2px solid #e2e8f0; transition: all 0.3s ease;
-        }
-        .ai-core-container.active {
-          border-color: transparent; background: rgba(255, 255, 255, 0.9); animation: none;
-        }
-        .ai-core-container.idle { animation: breathe-idle 4s ease-in-out infinite; }
+.print-page:last-child {
+  page-break-after: auto;
+  break-after: auto;
+}
 
-        .console-panel {
-          transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); overflow: hidden;
-          background: #ffffff; border-bottom: 1px solid #e2e8f0;
-          box-shadow: 0 20px 40px -10px rgba(0,0,0,0.08);
-        }
-        .console-panel.closed { max-height: 0; padding: 0; border: none; }
-        .console-panel.open { max-height: 500px; padding: 1.5rem; }
+@media print {
+  .print-page {
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+}
 
-        .typing-cursor::after {
-            content: ''; display: inline-block; width: 4px; height: 16px;
-            background: #7928ca; margin-left: 3px; vertical-align: sub;
-            animation: blink 1s step-end infinite;
-        }
-        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
-      `}</style>
+  .console-panel { 
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); 
+    overflow: hidden; background: #ffffff; border-bottom: 1px solid #e2e8f0; 
+    box-shadow: 0 20px 40px -10px rgba(0,0,0,0.08);
+  }
+  .console-panel.closed { max-height: 0; padding: 0; border: none; }
+  .console-panel.open { max-height: 500px; padding: 1.5rem; }
 
+  .typing-cursor::after { 
+    content: ''; display: inline-block; width: 4px; height: 16px; 
+    background: #7928ca; margin-left: 3px; vertical-align: sub; 
+    animation: blink 1s step-end infinite;
+  }
+
+  @media print {
+  /* 1. TÜM KAPSAYICI KİLİTLERİNİ AÇ */
+  html, body {
+    height: auto !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Ana App kapsayıcısındaki (div.h-screen) flex ve overflow kısıtlamasını kaldır */
+  .flex.h-screen {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* Main alanını serbest bırak */
+  main {
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+    position: static !important; /* Relative yerine static olsun */
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* 2. DİĞER ELEMANLARI GİZLE */
+  aside, header, .no-print {
+    display: none !important;
+  }
+
+  /* Renkleri Koru */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* 3. SAYFA AYARLARI (Senin kodunla aynı, sadece garantiye alıyoruz) */
+  .print-page {
+    width: 210mm !important;
+    height: 297mm !important;
+    min-height: 297mm !important;
+    max-height: 297mm !important;
+    margin: 0 !important;
+    padding: 5mm !important; /* Senin padding ayarın */
+    
+    /* Sayfa Kırılımı Zorla */
+    page-break-after: always !important;
+    page-break-inside: avoid !important;
+    break-after: page !important;
+    break-inside: avoid !important;
+    
+    overflow: hidden !important;
+    display: block !important;
+    position: relative !important;
+    background: white !important;
+  }
+
+  /* Son sayfanın arkasına boş sayfa atmasını engelle */
+  .print-page:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+}
+`}</style>
         <aside className="w-64 bg-[#0f172a] text-slate-300 flex flex-col shadow-xl z-20 print:hidden shrink-0">
           <div className="p-6 border-b border-slate-800">
             <div className="flex items-center gap-3">
@@ -496,658 +567,633 @@ const BalkizRainbowConsole = ({
   );
 };
 
-// --- MODULE 1: INFINITY SCHEDULER ---
+// --- MODULE 1: INFINITY SCHEDULER (FIXED LOGIC) ---
 function InfinityScheduler({ onNotify }) {
-  const [activeView, setActiveView] = useState('view'); 
+  const [activeView, setActiveView] = useState('view');
 
+  // --- MANTIK AYARLARI ---
+  const LOGIC_CONFIG = {
+    // İLKOKUL (0-4. Sınıf) - KESİN YASAKLAR
+    primaryBlacklist: [
+      'kimya', 'fizik', 'robot', 'yapay zeka','geleceğe mektup'
+    ],
+    // İLKOKUL TERCİHLERİ
+    primaryWhitelist: [
+      'yaratıcı drama', 'origami', 'yüz boyama', 
+      'pino mino', 'müzik', 'resim'
+    ],
+    // ORTAOKUL (5-8. Sınıf) TERCİHLERİ
+    middleSchoolPreferred: [
+      'kimya', 'fizik', 'göremediğimiz canavarlar', 'fen', 'matematik', 
+      'robot', 'masa deneyleri', 'vr', 'müzik', 'edebiyat'
+    ]
+  };
+
+  // --- DATA STATES ---
   const [activities, setActivities] = useState(db.load(DB_KEYS.ACTIVITIES, [
-    { id: 'a1', name: 'Robot', cat: 'tech', isMust: true, boxCount: 1 },
-    { id: 'a2', name: 'Yapay Zeka Etkinliği', cat: 'tech', isMust: false, boxCount: 1 },
-    { id: 'a3', name: 'Edebiyat', cat: 'art', isMust: true, boxCount: 20 },
-    { id: 'a4', name: 'Matematik', cat: 'science', isMust: true, boxCount: 2 },
+    { id: 'a1', name: 'Yapay Zeka', cat: 'science', isMust: false, boxCount: 1 }, // Test için
+    { id: 'a2', name: 'Robot', cat: 'tech', isMust: false, boxCount: 1 },
+    { id: 'a3', name: 'Fizik', cat: 'art', isMust: false, boxCount: 3 },
+    { id: 'a4', name: 'Matematik', cat: 'science', isMust: false, boxCount: 10 },
   ]));
 
   const [volunteers, setVolunteers] = useState(db.load(DB_KEYS.VOLUNTEERS, []));
+  
   const [timeSlots, setTimeSlots] = useState(db.load(DB_KEYS.TIMESLOTS, [
     { id: 't1', start: '09:00', end: '09:40', type: 'lesson' },
     { id: 't2', start: '09:40', end: '10:00', type: 'break' },
     { id: 't3', start: '10:00', end: '10:40', type: 'lesson' },
     { id: 't4', start: '10:40', end: '11:00', type: 'break' },
-    { id: 't5', start: '11:00', end: '11:40', type: 'presentation' }, 
-    { id: 't6', start: '11:40', end: '13:00', type: 'lunch' }, 
+    { id: 't5', start: '11:00', end: '11:40', type: 'presentation' },
+    { id: 't6', start: '11:40', end: '13:00', type: 'lunch' },
     { id: 't7', start: '13:00', end: '13:40', type: 'lesson' },
   ]));
 
   const [classes, setClasses] = useState(db.load(DB_KEYS.CLASSES, [
-    { id: 'c1', name: '5-A', schedule: {} },
-    { id: 'c2', name: '5-B', schedule: {} },
+    { id: 'c1', name: '4-A', schedule: {} }, 
+    { id: 'c2', name: '5-B', schedule: {} }, 
+    { id: 'c3', name: '3-C', schedule: {} }, 
   ]));
 
   const [warnings, setWarnings] = useState([]);
-  const [aiState, setAiState] = useState('idle'); 
-  const [isConsoleOpen, setIsConsoleOpen] = useState(true); 
-  const [hasDistributed, setHasDistributed] = useState(false); 
+  const [aiState, setAiState] = useState('idle');
+  const [isConsoleOpen, setIsConsoleOpen] = useState(true);
+  const [hasDistributed, setHasDistributed] = useState(false);
   const [editingSlot, setEditingSlot] = useState(null);
   const dragItem = useRef();
 
-  // Auto-save with sync
+  // --- SYNC EFFECTS ---
   useEffect(() => { db.save(DB_KEYS.ACTIVITIES, activities); }, [activities]);
-  useEffect(() => { 
-    db.save(DB_KEYS.VOLUNTEERS, volunteers); 
-    syncVolunteers(volunteers);
-  }, [volunteers]);
+  useEffect(() => { db.save(DB_KEYS.VOLUNTEERS, volunteers); }, [volunteers]); // Sync parent handles main sync
   useEffect(() => { db.save(DB_KEYS.TIMESLOTS, timeSlots); }, [timeSlots]);
   useEffect(() => { db.save(DB_KEYS.CLASSES, classes); }, [classes]);
-  
-  // Conflict detection
-  useEffect(() => { 
-    const warns = calculateConflicts(); 
-    setWarnings(warns);
-  }, [classes, activities, timeSlots, volunteers]);
 
-  const getVolunteerCounts = () => {
-      const counts = {};
-      volunteers.forEach(v => counts[v.id] = 0);
-      classes.forEach(c => {
-          Object.values(c.schedule).forEach(s => {
-              if(s.leadId) counts[s.leadId] = (counts[s.leadId] || 0) + 1;
-          });
-      });
-      return counts;
+  // --- HELPER: SINIF SEVİYESİ ALGILAMA ---
+  const detectGrade = (className) => {
+    // "Anasınıfı", "Kreş" kontrolü
+    if (className.toLowerCase().includes('ana') || className.toLowerCase().includes('kreş')) return 0;
+    
+    // Sayıyı çek (4-A -> 4, 5. Sınıf -> 5)
+    const match = className.match(/(\d+)/);
+    return match ? parseInt(match[0]) : 0;
   };
 
-  const calculateConflicts = () => {
+  // --- HELPER: NORMALİZASYON (Türkçe Karakter) ---
+  const normalize = (text) => text ? text.toLocaleLowerCase('tr').trim() : '';
+
+  // --- CONFLICT & WARNING LOGIC (B.A.L.K.I.Z. BRAIN) ---
+  // useCallback ile sarmaladık ki sonsuz döngü olmasın
+  const calculateConflicts = useCallback(() => {
     const newWarnings = [];
-    const mustActivities = activities.filter(a => a.isMust);
     const lessonSlots = timeSlots.filter(t => t.type === 'lesson');
-    
-    if(classes.every(c => Object.keys(c.schedule).length === 0)) return [];
+
+    if (classes.every(c => Object.keys(c.schedule).length === 0)) return [];
 
     classes.forEach(cls => {
-      const activityCounts = {};
-      const volunteerCounts = {};
-
-      Object.values(cls.schedule).forEach(slotData => {
-         if(slotData.activityId) activityCounts[slotData.activityId] = (activityCounts[slotData.activityId] || 0) + 1;
-         if(slotData.leadId) volunteerCounts[slotData.leadId] = (volunteerCounts[slotData.leadId] || 0) + 1;
-      });
-
-      Object.entries(activityCounts).forEach(([actId, count]) => {
-          if(count > 1) {
-              const actName = activities.find(a => a.id === actId)?.name || 'Etkinlik';
-              newWarnings.push({ type: 'duplicate_act', msg: `${cls.name}: "${actName}" ${count} kere tekrar ediyor!` });
+      const grade = detectGrade(cls.name);
+      
+      // 1. MÜFREDAT KONTROLÜ (PEDAGOJİK UYARILAR)
+      Object.values(cls.schedule).forEach(slot => {
+        const actName = normalize(slot.name);
+        
+        // İLKOKUL (0-4) UYARILARI
+        if (grade > 0 && grade <= 4) {
+          if (LOGIC_CONFIG.primaryBlacklist.some(bad => actName.includes(bad))) {
+             newWarnings.push({ 
+               type: 'protocol', 
+               msg: `Ufak Bir Şey: ${cls.name} (İlkokul) sınıfına "${slot.name}" verilmiş, kontrol edebilirsin.` 
+             });
           }
+        }
       });
 
-      Object.entries(volunteerCounts).forEach(([volId, count]) => {
-          if(count > 1) {
-              const volName = volunteers.find(v => v.id === volId)?.name || 'Gönüllü';
-              newWarnings.push({ type: 'duplicate_vol', msg: `${cls.name}: ${volName} sınıfa ${count} kez giriyor.` });
-          }
+      // 2. TEKRAR VE BOŞLUK KONTROLÜ
+      const actCounts = {}, volCounts = {};
+      Object.values(cls.schedule).forEach(s => {
+        if (s.activityId) actCounts[s.activityId] = (actCounts[s.activityId] || 0) + 1;
+        if (s.leadId) volCounts[s.leadId] = (volCounts[s.leadId] || 0) + 1;
       });
 
-      mustActivities.forEach(must => {
-        if(!activityCounts[must.id]) newWarnings.push({ type: 'missing', msg: `${cls.name}: "${must.name}" (Must) eksik.` });
+      Object.entries(actCounts).forEach(([id, n]) => {
+        if (n > 1) newWarnings.push({ type: 'duplicate_act', msg: `${cls.name}: "${activities.find(a=>a.id===id)?.name}" ${n} kere tekrar!` });
+      });
+      Object.entries(volCounts).forEach(([id, n]) => {
+        const v = volunteers.find(v=>v.id===id);
+        if (n > 1) newWarnings.push({ type: 'duplicate_vol', msg: `${cls.name}: ${v?.name} ${n} kere giriyor.` });
       });
 
       lessonSlots.forEach(slot => {
-          if(!cls.schedule[slot.id]) newWarnings.push({ type: 'empty', msg: `${cls.name} sınıfı ${slot.start} saatinde boş!` });
+        if (!cls.schedule[slot.id]) newWarnings.push({ type: 'empty', msg: `${cls.name} ${slot.start} boş!` });
       });
     });
 
+    // 3. GLOBAL ÇAKIŞMA VE STOK
     lessonSlots.forEach(slot => {
-        let volMap = {}; 
-        let activityUsageInSlot = {};
-
-        classes.forEach(cls => {
-            const cell = cls.schedule[slot.id];
-            if(cell) {
-                if(cell.leadId) {
-                    if(!volMap[cell.leadId]) volMap[cell.leadId] = [];
-                    volMap[cell.leadId].push(cls.name);
-                    const volunteer = volunteers.find(v => v.id === cell.leadId);
-                    if(volunteer && !volunteer.capabilities.includes(cell.activityId)) {
-                        newWarnings.push({ type: 'competency', msg: `${volunteer.name}, "${cell.name}" etkinliğini bilmiyor!` });
-                    }
-                }
-                if(cell.activityId) {
-                    activityUsageInSlot[cell.activityId] = (activityUsageInSlot[cell.activityId] || 0) + 1;
-                }
+      const volMap = {};
+      const actUsage = {};
+      
+      classes.forEach(cls => {
+        const cell = cls.schedule[slot.id];
+        if (cell) {
+          if (cell.leadId) {
+            if (!volMap[cell.leadId]) volMap[cell.leadId] = [];
+            volMap[cell.leadId].push(cls.name);
+            const vol = volunteers.find(v => v.id === cell.leadId);
+            if (vol && !vol.capabilities.includes(cell.activityId)) {
+              newWarnings.push({ type: 'competency', msg: `${vol.name}, "${cell.name}" bilmiyor!` });
             }
-        });
+          }
+          if (cell.activityId) actUsage[cell.activityId] = (actUsage[cell.activityId] || 0) + 1;
+        }
+      });
 
-        Object.keys(volMap).forEach(volId => {
-            if(volMap[volId].length > 1) {
-                const vName = volunteers.find(v=>v.id===volId)?.name || 'Gönüllü';
-                newWarnings.push({ type: 'conflict', msg: `${vName}, ${slot.start} saatinde çakışıyor: ${volMap[volId].join(' & ')}` });
-            }
-        });
-
-        Object.keys(activityUsageInSlot).forEach(actId => {
-            const act = activities.find(a => a.id === actId);
-            if(act && activityUsageInSlot[actId] > (act.boxCount || 99)) {
-                newWarnings.push({ 
-                    type: 'stock', 
-                    msg: `${act.name} stoğu yetersiz! (${activityUsageInSlot[actId]} sınıf > ${act.boxCount} kutu)` 
-                });
-            }
-        });
+      Object.keys(volMap).forEach(vId => {
+        if (volMap[vId].length > 1) {
+           const v = volunteers.find(v=>v.id===vId);
+           newWarnings.push({ type: 'conflict', msg: `${v?.name} ${slot.start} saatinde çakışıyor!` });
+        }
+      });
+      Object.keys(actUsage).forEach(aId => {
+        const act = activities.find(a => a.id === aId);
+        if (act && actUsage[aId] > (act.boxCount || 99)) {
+           newWarnings.push({ type: 'stock', msg: `${act.name} stoku yetersiz! (${actUsage[aId]} sınıf isteniyor)` });
+        }
+      });
     });
+
     return newWarnings;
+  }, [classes, activities, timeSlots, volunteers, LOGIC_CONFIG.primaryBlacklist]);
+
+  // Warning Listener
+  useEffect(() => {
+    setWarnings(calculateConflicts());
+  }, [calculateConflicts]);
+
+
+  // --- DAĞITIM MOTORU (DISTRIBUTION ENGINE) ---
+
+  // Kural 1: KESİN YASAKLAR (Hard Constraints)
+  const checkConstraints = (activityName, className) => {
+    const grade = detectGrade(className);
+    const nAct = normalize(activityName);
+
+    // İLKOKUL (0-4) FİLTRESİ
+    if (grade > 0 && grade <= 4) {
+      // Blacklist kontrolü (Kimya, Fizik vb. buraya takılır ve FALSE döner)
+      if (LOGIC_CONFIG.primaryBlacklist.some(bad => nAct.includes(bad))) return false;
+    }
+
+    // ORTAOKUL (5+) FİLTRESİ
+    if (grade >= 5) {
+      // 5. Sınıf artık ortaokul, Kimya alabilir.
+      // Ama "İlkokul Etkinliği" almamalı.
+      if (nAct.includes('ilkokul')) return false;
+      if (nAct.includes('boyama') && !nAct.includes('tuval')) return false;
+    }
+
+    return true; // Engel yoksa dağıt
+  };
+
+  // Kural 2: PUANLAMA (Soft Preferences)
+  const getSuitabilityScore = (activityName, className) => {
+    const grade = detectGrade(className);
+    const nAct = normalize(activityName);
+    let score = 50; 
+
+    // İLKOKUL PUANLAMASI
+    if (grade <= 4) {
+      if (LOGIC_CONFIG.primaryWhitelist.some(good => nAct.includes(good))) {
+        score += 40; // Çok uygun
+      }
+      // "Kimya" zaten checkConstraints'ten geçemez ama burada da düşürelim
+      if (nAct.includes('bilim') || nAct.includes('deney')) score -= 10;
+    }
+
+    // ORTAOKUL PUANLAMASI (5 Dahil)
+    if (grade >= 5) {
+      if (LOGIC_CONFIG.middleSchoolPreferred.some(good => nAct.includes(good))) {
+        score += 30;
+      }
+      // Büyükler drama/oyun pek sevmez (Genelleme)
+      if (nAct.includes('oyun') || nAct.includes('drama')) score -= 10;
+    }
+
+    score += Math.floor(Math.random() * 20) - 10;
+    return score;
   };
 
   const distributePerfectly = () => {
     setAiState('processing');
-    setIsConsoleOpen(true); 
-    setHasDistributed(true); 
-    
+    setIsConsoleOpen(true);
+    setHasDistributed(true);
+
     setTimeout(() => {
-        let newClasses = JSON.parse(JSON.stringify(classes));
-        newClasses.forEach(c => c.schedule = {});
-        let volLoad = {}; 
-        volunteers.forEach(v => volLoad[v.id] = 0);
+      let newClasses = JSON.parse(JSON.stringify(classes));
+      newClasses.forEach(c => c.schedule = {}); // Reset
+      
+      let volLoad = {};
+      volunteers.forEach(v => volLoad[v.id] = 0);
 
-        const checkStockAvailability = (actId, slotId, currentClasses) => {
-            const act = activities.find(a => a.id === actId);
-            const limit = act.boxCount || 99;
-            let usage = 0;
-            currentClasses.forEach(c => {
-                if(c.schedule[slotId] && c.schedule[slotId].activityId === actId) usage++;
-            });
-            return usage < limit;
-        };
+      const isStockAvailable = (actId, slotId, currentClasses) => {
+        const act = activities.find(a => a.id === actId);
+        let usage = 0;
+        currentClasses.forEach(c => { if (c.schedule[slotId]?.activityId === actId) usage++; });
+        return usage < (act.boxCount || 99);
+      };
 
-        const findAvailableLead = (actId, slotId, currentClassId, currentClasses) => {
-            if(!checkStockAvailability(actId, slotId, currentClasses)) return null;
-            const capable = volunteers.filter(v => v.capabilities.includes(actId));
-            const available = capable.filter(v => {
-                let busy = false;
-                currentClasses.forEach(c => {
-                    if(c.id === currentClassId) return;
-                    if(c.schedule[slotId] && c.schedule[slotId].leadId === v.id) busy = true;
-                });
-                return !busy;
-            });
-            if(available.length === 0) return null;
-            available.sort((a,b) => volLoad[a.id] - volLoad[b.id]);
-            return available[0];
-        };
-
-        const lessonSlots = timeSlots.filter(t => t.type === 'lesson');
-        const mustActivities = activities.filter(a => a.isMust);
-        let shuffledClasses = [...newClasses].sort(() => Math.random() - 0.5);
-
-        shuffledClasses.forEach(cls => {
-            let freeSlots = [...lessonSlots].sort(() => Math.random() - 0.5);
-            mustActivities.forEach(must => {
-                for (let i = 0; i < freeSlots.length; i++) {
-                    const slot = freeSlots[i];
-                    const lead = findAvailableLead(must.id, slot.id, cls.id, newClasses);
-                    if (lead) {
-                        newClasses.find(c => c.id === cls.id).schedule[slot.id] = {
-                            activityId: must.id, name: must.name, cat: must.cat, isMust: true,
-                            lead: lead.name, leadId: lead.id, support: []
-                        };
-                        volLoad[lead.id]++;
-                        freeSlots.splice(i, 1);
-                        break;
-                    }
-                }
-            });
+      const findBestLead = (actId, slotId, currentClassId, currentClasses) => {
+        if (!isStockAvailable(actId, slotId, currentClasses)) return null;
+        
+        const capable = volunteers.filter(v => v.capabilities.includes(actId));
+        const available = capable.filter(v => {
+          let busy = false;
+          currentClasses.forEach(c => {
+            if (c.id !== currentClassId && c.schedule[slotId]?.leadId === v.id) busy = true;
+          });
+          return !busy;
         });
 
-        newClasses.forEach(cls => {
-            lessonSlots.forEach(slot => {
-                if(!cls.schedule[slot.id]) {
-                    const existingActivityIds = Object.values(cls.schedule).map(s => s.activityId);
-                    const validOptionalActs = activities
-                        .filter(a => !a.isMust && !existingActivityIds.includes(a.id))
-                        .sort(() => Math.random() - 0.5);
+        if (available.length === 0) return null;
+        available.sort((a, b) => volLoad[a.id] - volLoad[b.id]);
+        return available[0];
+      };
 
-                    for(let act of validOptionalActs) {
-                        const lead = findAvailableLead(act.id, slot.id, cls.id, newClasses);
-                        if(lead) {
-                            cls.schedule[slot.id] = {
-                                activityId: act.id, name: act.name, cat: act.cat, isMust: false,
-                                lead: lead.name, leadId: lead.id, support: []
-                            };
-                            volLoad[lead.id]++;
-                            break;
-                        }
-                    }
-                }
-            });
+      const lessonSlots = timeSlots.filter(t => t.type === 'lesson');
+      const mustActivities = activities.filter(a => a.isMust);
+      let shuffledClasses = [...newClasses].sort(() => Math.random() - 0.5);
+
+      // 1. ZORUNLU ETKİNLİKLER
+      shuffledClasses.forEach(cls => {
+        let freeSlots = [...lessonSlots].sort(() => Math.random() - 0.5);
+        mustActivities.forEach(must => {
+          // BURASI KRİTİK: checkConstraints FALSE dönerse Kimya ilkokula gitmez.
+          if (!checkConstraints(must.name, cls.name)) return; 
+
+          for (let i = 0; i < freeSlots.length; i++) {
+            const slot = freeSlots[i];
+            const lead = findBestLead(must.id, slot.id, cls.id, newClasses);
+            if (lead) {
+              newClasses.find(c => c.id === cls.id).schedule[slot.id] = {
+                activityId: must.id, name: must.name, cat: must.cat, isMust: true,
+                lead: lead.name, leadId: lead.id, support: []
+              };
+              volLoad[lead.id]++;
+              freeSlots.splice(i, 1);
+              break;
+            }
+          }
         });
+      });
 
-        setClasses(newClasses);
-        setAiState('idle'); 
-        onNotify('B.A.L.K.I.Z. Dağıtımı Tamamladı!');
-    }, 1500); 
+      // 2. OPSİYONEL ETKİNLİKLER
+      newClasses.forEach(cls => {
+        lessonSlots.forEach(slot => {
+          if (!cls.schedule[slot.id]) {
+            const takenIds = Object.values(cls.schedule).map(s => s.activityId);
+            
+            let candidates = activities
+              .filter(a => !a.isMust && !takenIds.includes(a.id))
+              .filter(a => checkConstraints(a.name, cls.name)); // YASAKLARI ELE
+
+            // PUANA GÖRE SIRALA
+            candidates.sort((a, b) => getSuitabilityScore(b.name, cls.name) - getSuitabilityScore(a.name, cls.name));
+
+            for (let act of candidates) {
+              const lead = findBestLead(act.id, slot.id, cls.id, newClasses);
+              if (lead) {
+                cls.schedule[slot.id] = {
+                  activityId: act.id, name: act.name, cat: act.cat, isMust: false,
+                  lead: lead.name, leadId: lead.id, support: []
+                };
+                volLoad[lead.id]++;
+                break;
+              }
+            }
+          }
+        });
+      });
+
+      setClasses(newClasses);
+      setAiState('idle');
+      onNotify('B.A.L.K.I.Z. Dağıtımı Tamamladı!');
+    }, 1500);
   };
 
-  const handleDragStart = (e, clsId, slotId, data) => { 
-    if(!data) return; 
-    dragItem.current = { clsId, slotId, data }; 
-  };
-
+  // --- UI HANDLERS (DragDrop, Edit etc.) ---
+  const handleDragStart = (e, clsId, slotId, data) => { if (data) dragItem.current = { clsId, slotId, data }; };
   const handleDrop = (e, targetClsId, targetSlotId) => {
     e.preventDefault();
-    const source = dragItem.current;
-    if(!source || (source.clsId === targetClsId && source.slotId === targetSlotId)) return;
-    const targetSlotType = timeSlots.find(t=>t.id===targetSlotId)?.type;
-    if(targetSlotType !== 'lesson') return;
+    const src = dragItem.current;
+    if (!src || (src.clsId === targetClsId && src.slotId === targetSlotId)) return;
+    if (timeSlots.find(t=>t.id===targetSlotId)?.type !== 'lesson') return;
 
-    const newClasses = JSON.parse(JSON.stringify(classes));
-    const srcClass = newClasses.find(c => c.id === source.clsId);
-    const tgtClass = newClasses.find(c => c.id === targetClsId);
-    const srcData = srcClass.schedule[source.slotId];
-    const tgtData = tgtClass.schedule[targetSlotId];
-    delete srcClass.schedule[source.slotId];
-    tgtClass.schedule[targetSlotId] = srcData; 
-    if(tgtData) srcClass.schedule[source.slotId] = tgtData; 
-    setClasses(newClasses);
+    const copy = JSON.parse(JSON.stringify(classes));
+    const sClass = copy.find(c => c.id === src.clsId);
+    const tClass = copy.find(c => c.id === targetClsId);
+    const sData = sClass.schedule[src.slotId];
+    const tData = tClass.schedule[targetSlotId];
+    
+    delete sClass.schedule[src.slotId];
+    tClass.schedule[targetSlotId] = sData;
+    if (tData) sClass.schedule[src.slotId] = tData;
+    setClasses(copy);
   };
 
   const handleSlotClick = (clsId, slotId, data) => {
-    const slotType = timeSlots.find(t=>t.id===slotId)?.type;
-    if(slotType !== 'lesson') return;
-    setEditingSlot({ 
-        clsId, 
-        slotId, 
-        data: data ? { ...data, support: data.support || [] } : { name: '', activityId: '', lead: '', leadId: '', support: [] } 
-    });
+    if (timeSlots.find(t=>t.id===slotId)?.type !== 'lesson') return;
+    setEditingSlot({ clsId, slotId, data: data ? { ...data, support: data.support || [] } : { name: '', activityId: '', lead: '', leadId: '', support: [] } });
   };
 
   const saveSlotEdit = () => {
     if (!editingSlot) return;
-
-    let finalActivityId = editingSlot.data.activityId;
-    let finalActivityName = editingSlot.data.name;
-
-    const existingAct = activities.find(a => a.id === finalActivityId);
-    if (!existingAct && finalActivityName) {
-        const newAct = { id: uuid(), name: finalActivityName, cat: 'science', isMust: false, boxCount: 20 };
-        finalActivityId = newAct.id;
-        const updatedActivities = [...activities, newAct];
-        setActivities(updatedActivities);
-        onNotify(`"${newAct.name}" havuza eklendi!`);
-        
-        if(editingSlot.data.leadId) {
-            const updatedVolunteers = volunteers.map(v => {
-                if(v.id === editingSlot.data.leadId && !v.capabilities.includes(newAct.id)) {
-                    return { ...v, capabilities: [...v.capabilities, newAct.id] };
-                }
-                return v;
-            });
-            setVolunteers(updatedVolunteers);
-        }
+    let { activityId, name: actName, leadId } = editingSlot.data;
+    
+    if (actName && !activities.find(a => a.id === activityId)) {
+      const newAct = { id: Math.random().toString(36).substr(2, 9), name: actName, cat: 'science', isMust: false, boxCount: 20 };
+      activityId = newAct.id;
+      setActivities([...activities, newAct]);
+      onNotify(`"${actName}" eklendi.`);
+      
+      if (leadId) {
+        setVolunteers(volunteers.map(v => v.id === leadId && !v.capabilities.includes(newAct.id) ? { ...v, capabilities: [...v.capabilities, newAct.id] } : v));
+      }
     }
 
-    const updatedClasses = classes.map(c => {
-        if (c.id === editingSlot.clsId) {
-            const newSchedule = { ...c.schedule };
-            if(editingSlot.data.activityId === 'delete') {
-              delete newSchedule[editingSlot.slotId];
-            } else {
-                newSchedule[editingSlot.slotId] = {
-                    ...editingSlot.data,
-                    activityId: finalActivityId,
-                    name: finalActivityName
-                };
-            }
-            return { ...c, schedule: newSchedule };
-        }
-        return c;
-    });
-    setClasses(updatedClasses);
+    setClasses(classes.map(c => {
+      if (c.id !== editingSlot.clsId) return c;
+      const newSched = { ...c.schedule };
+      if (activityId === 'delete') delete newSched[editingSlot.slotId];
+      else newSched[editingSlot.slotId] = { ...editingSlot.data, activityId, name: actName };
+      return { ...c, schedule: newSched };
+    }));
     setEditingSlot(null);
   };
 
-  /**
-   * FIXED: Volunteer deletion with proper database sync
-   */
-  const removeVolunteer = (id) => {
-    const updatedVolunteers = volunteers.filter(v => v.id !== id);
-    
-    // 1. Update all databases FIRST
-    syncVolunteers(updatedVolunteers);
-    
-    // 2. Then update state
-    setVolunteers(updatedVolunteers);
-    
-    onNotify("Gönüllü tüm modüllerden silindi");
-  };
+  const sortedVolunteers = [...volunteers].sort((a,b) => {
+    const getCount = (vid) => classes.reduce((acc, c) => acc + Object.values(c.schedule).filter(s => s.leadId === vid).length, 0);
+    return getCount(a.id) - getCount(b.id);
+  });
 
-  const isExpert = (volId, actId) => { 
-    const v = volunteers.find(vol => vol.id === volId); 
-    return v && v.capabilities.includes(actId); 
-  };
-
-  const volunteerCounts = getVolunteerCounts();
-  const sortedVolunteers = [...volunteers].sort((a,b) => volunteerCounts[a.id] - volunteerCounts[b.id]);
-
+  // --- RENDER ---
   return (
     <div className="space-y-6 relative">
-      {/* HEADER CONTROLS */}
+      {/* HEADER */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 no-print flex flex-wrap gap-2 items-center relative z-50">
         <NavBtn active={activeView==='view'} onClick={()=>setActiveView('view')} icon={<Calendar size={18}/>} label="Program" />
         <NavBtn active={activeView==='setup'} onClick={()=>setActiveView('setup')} icon={<BookOpen size={18}/>} label="Katalog & Zaman" />
         <NavBtn active={activeView==='volunteers'} onClick={()=>setActiveView('volunteers')} icon={<GraduationCap size={18}/>} label="Gönüllü & Yetenek" />
         <div className="flex-1"></div>
-        {activeView === 'view' && (
-          <>
-            <button onClick={() => setIsConsoleOpen(!isConsoleOpen)} className={`mr-2 px-3 py-2 rounded-lg font-bold border transition-colors ${isConsoleOpen ? 'bg-indigo-50 text-indigo-600 border-indigo-200' : 'bg-white text-slate-500 border-slate-300 hover:bg-slate-50'}`}>
-                {isConsoleOpen ? <ChevronUp size={18}/> : <ChevronDown size={18}/>}
-            </button>
-            <button onClick={distributePerfectly} className="bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 text-white px-6 py-2 rounded-lg font-bold flex gap-2 items-center shadow-lg shadow-fuchsia-200 transform active:scale-95 transition-all">
-                <Wand2 size={18}/> B.A.L.K.I.Z. Dağıtsın
-            </button>
-          </>
-        )}
+{activeView === 'view' && (
+  <>
+    {/* BALKIZ KONSOLU */}
+    <BalkizRainbowConsole 
+      warnings={warnings} 
+      aiState={aiState} 
+      isOpen={isConsoleOpen} 
+      onClose={() => setIsConsoleOpen(false)} 
+      hasDistributed={hasDistributed} 
+    />
+
+    {/* KONTROL PANELİ - Balkız Dağıtsın Butonu */}
+    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 no-print flex flex-wrap gap-2 items-center justify-between relative z-10 mb-4">
+      <button 
+        onClick={() => setIsConsoleOpen(!isConsoleOpen)} 
+        className={`px-3 py-2 rounded-lg font-bold border transition-colors ${isConsoleOpen ? 'bg-indigo-50 text-indigo-600 border-indigo-200' : 'bg-white text-slate-500 border-slate-300 hover:bg-slate-50'}`}
+      >
+        {isConsoleOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+      </button>
+      
+      <button 
+        onClick={distributePerfectly} 
+        className="bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 text-white px-6 py-2 rounded-lg font-bold flex gap-2 items-center shadow-lg shadow-fuchsia-200 transform active:scale-95 transition-all"
+      >
+        <Wand2 size={18} /> B.A.L.K.I.Z. Dağıtsın
+      </button>
+    </div>
+
+    {/* YÜKLENME DENGESİ */}
+    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 no-print overflow-x-auto relative z-10 mb-4">
+       <h4 className="text-xs font-bold text-slate-400 uppercase mb-3 flex items-center gap-2 tracking-wide">
+         <BarChart3 size={14} /> Gönüllü Yük Dengesi
+       </h4>
+       <div className="flex gap-3">
+         {sortedVolunteers.map(v => {
+           const count = classes.reduce((acc, c) => acc + Object.values(c.schedule).filter(s => s.leadId === v.id).length, 0);
+           return (
+             <div key={v.id} className={`flex items-center gap-3 px-3 py-2 rounded-lg border text-xs font-semibold whitespace-nowrap shadow-sm ${count > 3 ? 'bg-orange-50 text-orange-700' : 'bg-emerald-50 text-emerald-700'}`}>
+               <span>{v.name}</span>
+               <span className="bg-white/50 px-2 rounded">{count}</span>
+             </div>
+           )
+         })}
+       </div>
+    </div>
+
+    {/* ETKİNLİK PROGRAMI TABLOSU - Yazdırılabilir */}
+    <div className="bg-white p-8 shadow-sm rounded-xl border border-slate-200 print:shadow-none print:p-4 print:rounded-none w-full print:max-w-none max-w-[297mm] mx-auto landscape-print">
+      <div className="text-center mb-6 border-b-2 border-slate-800 pb-4">
+        <h1 className="text-2xl font-black uppercase text-slate-900 tracking-[0.2em]">
+          Etkinlik Programı
+        </h1>
       </div>
-
-      {/* BALKIZ CONSOLE */}
-      <BalkizRainbowConsole 
-        warnings={warnings} 
-        aiState={aiState} 
-        isOpen={isConsoleOpen} 
-        onClose={() => setIsConsoleOpen(false)}
-        hasDistributed={hasDistributed}
-      />
-
-      {activeView === 'view' && (
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 no-print overflow-x-auto relative z-10 mt-2">
-            <h4 className="text-xs font-bold text-slate-400 uppercase mb-3 flex items-center gap-2 tracking-wide"><BarChart3 size={14}/> Gönüllü Yük Dengesi</h4>
-            <div className="flex gap-3">
-                {sortedVolunteers.map(vol => {
-                    const count = volunteerCounts[vol.id];
-                    let bgClass = "bg-white border-slate-200 text-slate-600";
-                    let countClass = "bg-slate-100 text-slate-600";
-                    
-                    if(count > 0 && count <= 3) {
-                       bgClass = "bg-emerald-50 border-emerald-200 text-emerald-700";
-                       countClass = "bg-emerald-100 text-emerald-800";
-                    } else if(count > 3) {
-                       bgClass = "bg-orange-50 border-orange-200 text-orange-700";
-                       countClass = "bg-orange-100 text-orange-800";
-                    }
-
-                    return (
-                        <div key={vol.id} className={`flex items-center gap-3 px-3 py-2 rounded-lg border text-xs font-semibold whitespace-nowrap transition-all shadow-sm ${bgClass}`}>
-                            <span className="truncate max-w-[100px]">{vol.name}</span>
-                            <span className={`px-2 py-0.5 rounded-md font-bold ${countClass}`}>{count}</span>
-                        </div>
-                    );
-                })}
-            </div>
-        </div>
-      )}
-
-      {activeView === 'volunteers' && (
-         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 animate-fadeIn">
-            <h3 className="font-bold text-lg mb-6 flex items-center gap-2 text-slate-800"><Award size={24} className="text-amber-500"/> Gönüllü Yetenek Kartları</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {volunteers.map(vol => (
-                    <div key={vol.id} className="border border-slate-200 rounded-xl p-5 bg-white relative group shadow-sm hover:shadow-md transition-shadow">
-                        <div className="flex justify-between items-start mb-4">
-                            <div className="flex-1 mr-2">
-                              <input 
-                                value={vol.name} 
-                                onChange={e=>setVolunteers(volunteers.map(v=>v.id===vol.id?{...v, name:e.target.value}:v))} 
-                                className="w-full bg-transparent font-bold text-lg border-b border-dashed border-slate-300 focus:outline-none focus:border-indigo-500 text-slate-800"
-                              />
+      
+      <table className="w-full border-collapse border-2 border-slate-900 text-sm">
+        <thead>
+          <tr className="bg-slate-50">
+            <th className="border-2 border-slate-900 p-3 w-24 font-black">Saat</th>
+            {classes.map(c => (
+              <th key={c.id} className="border-2 border-slate-900 p-3 font-bold text-lg">
+                {c.name}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {timeSlots.map(slot => (
+            <tr key={slot.id} className={slot.type !== 'lesson' ? 'bg-slate-50' : ''}>
+              <td className="border-2 border-slate-900 p-2 font-bold text-center align-middle">
+                {slot.start}<br/>-<br/>{slot.end}
+              </td>
+              {slot.type !== 'lesson' ? (
+                <td colSpan={classes.length} className="border-2 border-slate-900 p-3 text-center font-black tracking-widest opacity-60 text-base">
+                  {slot.type === 'break' ? '🔔 TENEFFÜS' : slot.type === 'lunch' ? '🍽️ ÖĞLE ARASI' : slot.type === 'presentation' ? '🎤 SUNUM' : 'DİĞER'}
+                </td>
+              ) : (
+                classes.map(cls => {
+                  const cell = cls.schedule[slot.id];
+                  return (
+                    <td 
+                      key={cls.id} 
+                      onDragOver={e=>e.preventDefault()} 
+                      onDrop={e=>handleDrop(e, cls.id, slot.id)} 
+                      className="border-2 border-slate-900 p-2 h-32 align-top hover:bg-slate-50 transition-colors print:hover:bg-transparent"
+                    >
+                      {cell ? (
+                        <div 
+                          draggable 
+                          onDragStart={e=>handleDragStart(e, cls.id, slot.id, cell)} 
+                          onClick={()=>handleSlotClick(cls.id, slot.id, cell)} 
+                          className={`h-full p-2 rounded cursor-grab group flex flex-col shadow-sm border-2 print:cursor-default print:shadow-none ${cell.isMust ? 'bg-red-50 border-red-300' : 'bg-blue-50 border-blue-300'}`}
+                        >
+                          <div className="text-xs font-bold mb-1 flex justify-between items-start">
+                            <span className="flex-1">{cell.name}</span>
+                            {cell.isMust && <span className="text-red-600 font-black text-sm ml-1">⚠</span>}
+                          </div>
+                          <div className="mt-auto text-[11px] leading-tight">
+                            <span className="font-bold text-slate-600">👤</span> {cell.lead}
+                          </div>
+                          {cell.support?.length > 0 && (
+                            <div className="text-[10px] text-slate-500 truncate mt-0.5">
+                              🤝 {cell.support.join(', ')}
                             </div>
-                            <button 
-                              onClick={() => removeVolunteer(vol.id)} 
-                              className="text-slate-300 hover:text-red-500 transition-colors"
-                            >
-                              <Trash2 size={18}/>
-                            </button>
+                          )}
                         </div>
-                        <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto pr-1">
-                            {activities.map(act => (
-                                <label key={act.id} className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-xs border transition-colors ${vol.capabilities.includes(act.id) ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-bold' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>
-                                    <input 
-                                      type="checkbox" 
-                                      checked={vol.capabilities.includes(act.id)} 
-                                      onChange={e => {
-                                          let caps = [...vol.capabilities];
-                                          if(e.target.checked) caps.push(act.id); 
-                                          else caps = caps.filter(c => c !== act.id);
-                                          setVolunteers(volunteers.map(v=>v.id===vol.id?{...v, capabilities:caps}:v));
-                                      }} 
-                                      className="accent-indigo-600 w-3.5 h-3.5" 
-                                    />
-                                    {act.name}
-                                </label>
-                            ))}
+                      ) : (
+                        <div 
+                          onClick={()=>handleSlotClick(cls.id, slot.id, null)} 
+                          className="h-full flex items-center justify-center text-slate-200 hover:text-indigo-400 cursor-pointer print:hidden"
+                        >
+                          <Plus size={28}/>
                         </div>
-                    </div>
-                ))}
-                <button 
-                  onClick={()=>setVolunteers([...volunteers, {id:uuid(), name:'Yeni Gönüllü', capabilities:[]}])} 
-                  className="border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center text-slate-400 hover:text-indigo-600 hover:border-indigo-400 hover:bg-indigo-50 transition-all h-[300px]"
-                >
-                  <Plus size={48} className="mb-2"/>
-                  <span className="font-bold">Gönüllü Ekle</span>
-                </button>
-            </div>
-         </div>
-      )}
+                      )}
+                    </td>
+                  )
+                })
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </>
+)}
 
-      {activeView === 'setup' && (
-        <SetupModule 
-          activities={activities} 
-          setActivities={setActivities} 
-          timeSlots={timeSlots} 
-          setTimeSlots={setTimeSlots} 
-          classes={classes} 
-          setClasses={setClasses} 
-        />
-      )}
 
-      {activeView === 'view' && (
-        <div className="bg-white p-8 shadow-sm rounded-xl border border-slate-200 print:shadow-none print:p-0 w-full max-w-[297mm] mx-auto landscape-print mt-4">
-           <div className="text-center mb-6 border-b-2 border-slate-800 pb-4">
-             <h1 className="text-2xl font-black uppercase text-slate-900 tracking-[0.2em]">Etkinlik Programı</h1>
-           </div>
-           <table className="w-full border-collapse border border-slate-900 text-sm table-fixed">
-             <thead>
-               <tr className="bg-slate-50 print:bg-slate-100">
-                 <th className="border border-slate-900 p-3 w-24 bg-slate-100 text-slate-900 font-bold">Saat</th>
-                 {classes.map(c => <th key={c.id} className="border border-slate-900 p-3 text-lg font-bold w-40 text-slate-900">{c.name}</th>)}
-               </tr>
-             </thead>
-             <tbody>
-               {timeSlots.map(slot => {
-                 if (slot.type !== 'lesson') {
-                     let rowLabel = 'ARA';
-                     let rowClass = 'bg-slate-50';
-                     let icon = null;
-                     
-                     if (slot.type === 'break') { rowLabel = 'TENEFFÜS'; rowClass = 'bg-slate-100 text-slate-400'; icon = <Coffee size={16}/>; }
-                     else if (slot.type === 'lunch') { rowLabel = 'ÖĞLE ARASI'; rowClass = 'bg-orange-50 text-orange-600'; icon = <Utensils size={16}/>; }
-                     else if (slot.type === 'presentation') { rowLabel = 'SUNUM / SEMİNER'; rowClass = 'bg-indigo-50 text-indigo-600'; icon = <Projector size={16}/>; }
-                     else if (slot.type === 'outdoor') { rowLabel = 'DIŞ ETKİNLİK'; rowClass = 'bg-emerald-50 text-emerald-600'; icon = <Sun size={16}/>; }
+      </div>
+      {/* VIEWS */}
+{activeView === 'volunteers' && (
+  <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 animate-fadeIn">
+    {/* GÖNÜLLÜ EKLEME BUTONU */}
+    <div className="flex justify-between items-center mb-6">
+      <h3 className="text-lg font-bold text-slate-800">Gönüllü Yönetimi</h3>
+      <button 
+        onClick={() => {
+          const newVol = { 
+            id: uuid(), 
+            name: 'Yeni Gönüllü', 
+            capabilities: [] 
+          };
+          const updatedVolunteers = [...volunteers, newVol];
+          setVolunteers(updatedVolunteers);
+          syncVolunteers(updatedVolunteers); // Tüm modüllere yay
+          onNotify("Yeni gönüllü eklendi!");
+        }} 
+        className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 shadow-sm transition-all"
+      >
+        <Plus size={18}/> Gönüllü Ekle
+      </button>
+    </div>
 
-                     return (
-                        <tr key={slot.id} className={rowClass}>
-                           <td className="border border-slate-900 p-2 font-bold text-center align-middle text-slate-900">
-                             <div className="text-base">{slot.start} - {slot.end}</div>
-                           </td>
-                           <td colSpan={classes.length} className="border border-slate-900 p-2 text-center align-middle">
-                              <div className="flex items-center justify-center gap-2 font-black tracking-widest text-sm opacity-80">
-                                 {icon} {rowLabel}
-                              </div>
-                           </td>
-                        </tr>
-                     );
-                 }
-                 return (
-                 <tr key={slot.id}>
-                   <td className="border border-slate-900 p-2 font-bold text-center align-middle text-slate-900">
-                     <div className="text-base">{slot.start} - {slot.end}</div>
-                   </td>
-                   {classes.map(cls => {
-                     const cell = cls.schedule[slot.id];
-                     const competent = cell && cell.leadId ? isExpert(cell.leadId, cell.activityId) : true;
-                     return (
-                       <td key={cls.id} onDragOver={(e)=>e.preventDefault()} onDrop={(e) => handleDrop(e, cls.id, slot.id)} className="border border-slate-900 p-1 text-center h-32 relative align-top transition-colors hover:bg-slate-50 text-slate-900">
-                         {cell ? (
-                           <div draggable onDragStart={(e) => handleDragStart(e, cls.id, slot.id, cell)} onClick={() => handleSlotClick(cls.id, slot.id, cell)} className="h-full flex flex-col cursor-grab active:cursor-grabbing group relative p-1.5 rounded hover:bg-white hover:shadow-lg hover:z-10 transition-all border border-transparent hover:border-slate-200">
-                             <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded border mb-1 flex items-center justify-between shadow-sm ${cell.isMust ? 'bg-red-50 border-red-200 text-red-900' : 'bg-blue-50 border-blue-200 text-blue-900'}`}>
-                               <span className="truncate">{cell.name}</span>
-                               {cell.isMust && <span className="text-[8px] bg-red-500 text-white px-1 rounded ml-1">Z</span>}
-                             </div>
-                             <div className="text-left px-1 mt-auto space-y-1.5">
-                                <div className="text-[11px] leading-tight flex items-center gap-1">
-                                   <span className="font-bold text-slate-500">Lider:</span> 
-                                   <span className="truncate font-semibold text-slate-800">{cell.lead}</span>
-                                   {!competent && <AlertCircle size={14} className="text-orange-500" title="Uzman Değil"/>}
-                                </div>
-                                {cell.support && cell.support.length > 0 && (
-                                  <div className="text-[10px] leading-tight text-slate-400 truncate">
-                                    <span className="font-bold text-slate-500">Yrd:</span> {cell.support.join(', ')}
-                                  </div>
-                                )}
-                             </div>
-                           </div>
-                         ) : (
-                           <div className="h-full w-full flex flex-col items-center justify-center text-slate-200 hover:text-indigo-400 cursor-pointer transition-colors" onClick={()=>handleSlotClick(cls.id, slot.id, null)}>
-                             <Plus size={28}/>
-                           </div>
-                         )}
-                       </td>
-                     );
-                   })}
-                 </tr>
-               )})}
-             </tbody>
-           </table>
+    {/* GÖNÜLLÜ KARTLARI */}
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {volunteers.map(vol => (
+        <div key={vol.id} className="border border-slate-200 rounded-xl p-5 bg-white shadow-sm relative group">
+          <div className="flex justify-between mb-4">
+            <input 
+              value={vol.name} 
+              onChange={e => {
+                const updated = volunteers.map(v => v.id === vol.id ? { ...v, name: e.target.value } : v);
+                setVolunteers(updated);
+                syncVolunteers(updated); // Senkronize et
+              }} 
+              className="font-bold text-lg border-b border-dashed border-slate-300 w-full bg-transparent focus:outline-none" 
+            />
+            <button 
+              onClick={() => { 
+                const updated = volunteers.filter(v => v.id !== vol.id);
+                setVolunteers(updated); 
+                syncVolunteers(updated); // Senkronize et
+                onNotify("Gönüllü silindi"); 
+              }} 
+              className="text-slate-300 hover:text-red-500"
+            >
+              <Trash2 size={18} />
+            </button>
+          </div>
+          
+          <div className="max-h-40 overflow-y-auto grid gap-2">
+            {activities.map(act => (
+              <label 
+                key={act.id} 
+                className={`flex items-center gap-2 px-3 py-2 rounded border text-xs cursor-pointer ${
+                  vol.capabilities.includes(act.id) 
+                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-bold' 
+                    : 'bg-slate-50 text-slate-400'
+                }`}
+              >
+                <input 
+                  type="checkbox" 
+                  checked={vol.capabilities.includes(act.id)} 
+                  onChange={e => {
+                    const caps = e.target.checked 
+                      ? [...vol.capabilities, act.id] 
+                      : vol.capabilities.filter(c => c !== act.id);
+                    const updated = volunteers.map(v => v.id === vol.id ? { ...v, capabilities: caps } : v);
+                    setVolunteers(updated);
+                    syncVolunteers(updated); // Senkronize et
+                  }} 
+                  className="accent-indigo-600" 
+                />
+                {act.name}
+              </label>
+            ))}
+          </div>
         </div>
-      )}
+      ))}
+    </div>
+  </div>
+)}
+
+
+      {activeView === 'setup' && <SetupModule activities={activities} setActivities={setActivities} timeSlots={timeSlots} setTimeSlots={setTimeSlots} classes={classes} setClasses={setClasses} />}
 
       {/* EDIT MODAL */}
       {editingSlot && (
         <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-50 print:hidden backdrop-blur-sm">
-           <div className="bg-white p-6 rounded-xl shadow-2xl w-96 border-t-4 border-indigo-600 animate-fadeIn text-slate-800">
-              <div className="flex justify-between items-center mb-6">
-                 <h3 className="font-bold text-lg text-slate-800">{editingSlot.data.activityId ? 'Dersi Düzenle' : 'Ders Ekle'}</h3>
-                 <button onClick={()=>setEditingSlot(null)} className="text-slate-400 hover:text-slate-600"><X size={24}/></button>
-              </div>
-              <div className="mb-4 relative">
-                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Etkinlik</label>
-                 <div className="relative">
-                     <Search size={16} className="absolute left-3 top-3 text-slate-400"/>
-                     <input 
-                        className="w-full border border-slate-200 p-2 pl-9 rounded bg-slate-50 focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800"
-                        placeholder="Etkinlik ara veya yaz..."
-                        value={editingSlot.data.name || ''}
-                        onChange={(e) => {
-                            const val = e.target.value;
-                            const match = activities.find(a => a.name.toLowerCase() === val.toLowerCase());
-                            if(match) {
-                                setEditingSlot({...editingSlot, data: { ...editingSlot.data, activityId: match.id, name: match.name, cat: match.cat, isMust: match.isMust }});
-                            } else {
-                                setEditingSlot({...editingSlot, data: { ...editingSlot.data, activityId: '', name: val }});
-                            }
-                        }}
-                     />
-                 </div>
-                 {editingSlot.data.name && !activities.find(a => a.name === editingSlot.data.name) && (
-                     <div className="mt-1 text-xs text-indigo-600 font-bold flex items-center gap-1">
-                        <Plus size={12}/> "{editingSlot.data.name}" havuza eklenecek.
-                     </div>
-                 )}
-                 <div className="mt-2 max-h-32 overflow-y-auto border border-slate-200 rounded bg-white">
-                     {activities.filter(a => a.name.toLowerCase().includes((editingSlot.data.name || '').toLowerCase())).map(a => (
-                         <div 
-                           key={a.id} 
-                           className="p-2 hover:bg-slate-100 cursor-pointer text-sm border-b border-slate-100 last:border-0"
-                           onClick={() => setEditingSlot({...editingSlot, data: { ...editingSlot.data, activityId: a.id, name: a.name, cat: a.cat, isMust: a.isMust }})}
-                         >
-                            {a.name} {a.isMust && <span className="text-[10px] text-red-500 font-bold">(Z)</span>}
-                         </div>
-                     ))}
-                 </div>
-              </div>
-              <div className="mb-4">
-                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Lider Gönüllü</label>
-                 <select 
-                   className="w-full border border-slate-200 p-2 rounded bg-slate-50 focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800" 
-                   value={editingSlot.data.leadId || ''} 
-                   onChange={e => {
-                        const v = volunteers.find(vol=>vol.id === e.target.value);
-                        setEditingSlot({...editingSlot, data:{...editingSlot.data, lead:v?.name, leadId:v?.id}});
-                    }}
-                 >
-                    <option value="">Seçiniz...</option>
-                    {editingSlot.data.activityId ? (
-                        <>
-                        <optgroup label="Uzman Gönüllüler">
-                            {volunteers.filter(v => v.capabilities.includes(editingSlot.data.activityId)).map(v => {
-                                let isBusy = false;
-                                classes.forEach(c => { 
-                                  if(c.id === editingSlot.clsId) return; 
-                                  if(c.schedule[editingSlot.slotId] && c.schedule[editingSlot.slotId].leadId === v.id) isBusy = true; 
-                                });
-                                return <option key={v.id} value={v.id} disabled={isBusy} className={isBusy ? 'text-red-400' : 'text-teal-600 font-bold'}>{v.name} {isBusy ? '(DOLU)' : ''}</option>
-                            })}
-                        </optgroup>
-                        <optgroup label="Diğerleri (Uyarı Verir)">
-                            {volunteers.filter(v => !v.capabilities.includes(editingSlot.data.activityId)).map(v => {
-                                let isBusy = false;
-                                classes.forEach(c => { 
-                                  if(c.id === editingSlot.clsId) return; 
-                                  if(c.schedule[editingSlot.slotId] && c.schedule[editingSlot.slotId].leadId === v.id) isBusy = true; 
-                                });
-                                return <option key={v.id} value={v.id} disabled={isBusy} className={isBusy ? 'text-red-400' : 'text-orange-500'}>{v.name} {isBusy ? '(DOLU)' : ''}</option>
-                            })}
-                        </optgroup>
-                        </>
-                    ) : (
-                        volunteers.map(v => {
-                             let isBusy = false;
-                             classes.forEach(c => { 
-                               if(c.id === editingSlot.clsId) return; 
-                               if(c.schedule[editingSlot.slotId] && c.schedule[editingSlot.slotId].leadId === v.id) isBusy = true; 
-                             });
-                             return <option key={v.id} value={v.id} disabled={isBusy} className={isBusy ? 'text-red-400' : ''}>{v.name} {isBusy ? '(DOLU)' : ''}</option>
-                        })
-                    )}
-                 </select>
-              </div>
-              <div className="mb-6">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Yardımcılar</label>
-                <input 
-                    className="w-full border border-slate-200 p-2 rounded bg-slate-50 text-slate-800" 
-                    value={Array.isArray(editingSlot.data.support) ? editingSlot.data.support.join(', ') : (editingSlot.data.support || '')} 
-                    onChange={e=>setEditingSlot({...editingSlot, data:{...editingSlot.data, support:e.target.value.split(',').map(s=>s.trim())}})} 
-                    placeholder="Ali, Veli..."
-                />
-              </div>
-              <div className="flex gap-3 pt-4 border-t border-slate-100">
-                  {editingSlot.data.activityId && (
-                                        <button 
-                      onClick={()=>setEditingSlot({...editingSlot, data: { activityId: 'delete' }})} 
-                      className="bg-red-50 text-red-600 border border-red-100 px-4 py-2 rounded-lg font-bold flex-1 flex items-center justify-center gap-2 hover:bg-red-100 transition-colors"
-                    >
-                      <Trash2 size={18}/> Sil
-                    </button>
-                  )}
-                    <button 
-                      onClick={saveSlotEdit} 
-                      className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold flex-[2] hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-colors"
-                    >
-                      {editingSlot.data.activityId ? 'Güncelle' : 'Kaydet & Ekle'}
-                    </button>
+          <div className="bg-white p-6 rounded-xl shadow-2xl w-96 border-t-4 border-indigo-600 animate-fadeIn">
+            <div className="flex justify-between mb-6"><h3 className="font-bold text-lg">Düzenle / Ekle</h3><button onClick={() => setEditingSlot(null)}><X size={24} className="text-slate-400" /></button></div>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-slate-500 block mb-1">Etkinlik</label>
+                <div className="relative">
+                  <Search size={16} className="absolute left-3 top-3 text-slate-400"/>
+                  <input className="w-full border p-2 pl-9 rounded bg-slate-50" placeholder="Ara..." value={editingSlot.data.name || ''} onChange={e => {
+                    const match = activities.find(a => a.name.toLocaleLowerCase('tr') === e.target.value.toLocaleLowerCase('tr'));
+                    setEditingSlot({ ...editingSlot, data: { ...editingSlot.data, name: e.target.value, activityId: match?.id || '' } });
+                  }} />
+                  {editingSlot.data.name && !activities.find(a=>a.name===editingSlot.data.name) && <div className="text-xs text-indigo-600 mt-1 font-bold">+ Yeni Eklenecek</div>}
                 </div>
-             </div>
+                <div className="mt-2 max-h-24 overflow-y-auto border rounded">{activities.filter(a=>a.name.toLocaleLowerCase('tr').includes((editingSlot.data.name||'').toLocaleLowerCase('tr'))).map(a=><div key={a.id} className="p-2 hover:bg-slate-100 text-sm cursor-pointer" onClick={()=>setEditingSlot({...editingSlot, data:{...editingSlot.data, activityId:a.id, name:a.name}})}>{a.name}</div>)}</div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 block mb-1">Lider</label>
+                <select className="w-full border p-2 rounded bg-slate-50" value={editingSlot.data.leadId || ''} onChange={e => { const v = volunteers.find(x => x.id === e.target.value); setEditingSlot({ ...editingSlot, data: { ...editingSlot.data, leadId: v?.id, lead: v?.name } }) }}>
+                  <option value="">Seçiniz...</option>
+                  {volunteers.map(v => <option key={v.id} value={v.id} className={!v.capabilities.includes(editingSlot.data.activityId) ? 'text-orange-500' : 'text-teal-600'}>{v.name} {!v.capabilities.includes(editingSlot.data.activityId) && '(!)'}</option>)}
+                </select>
+              </div>
+              <div><label className="text-xs font-bold text-slate-500 block mb-1">Yardımcılar</label><input className="w-full border p-2 rounded bg-slate-50" value={editingSlot.data.support || ''} onChange={e => setEditingSlot({ ...editingSlot, data: { ...editingSlot.data, support: e.target.value.split(',') } })} placeholder="Ali, Veli..." /></div>
+              <div className="flex gap-2 pt-2">
+                {editingSlot.data.activityId && <button onClick={() => setEditingSlot({ ...editingSlot, data: { activityId: 'delete' } })} className="flex-1 bg-red-50 text-red-600 p-2 rounded font-bold"><Trash2 size={16} className="inline"/> Sil</button>}
+                <button onClick={saveSlotEdit} className="flex-[2] bg-indigo-600 text-white p-2 rounded font-bold">Kaydet</button>
+              </div>
+            </div>
           </div>
-        )}
-      </div>
-    );
-  }
+        </div>
+      )}
+    </div>
+  );
+}
 
   const NavBtn = ({active, onClick, icon, label}) => (
     <button onClick={onClick} className={`px-4 py-2 rounded-lg font-bold flex gap-2 items-center transition-colors ${active ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 no-print'}`}>
@@ -1522,129 +1568,235 @@ function InfinityScheduler({ onNotify }) {
         return { first, last };
     };
 
-    const getPages = () => {
-        const pages = [];
-        for (let i = 0; i < volunteers.length; i += ROWS_PER_PAGE) {
-            const chunk = volunteers.slice(i, i + ROWS_PER_PAGE);
-            pages.push({ type: 'names', items: chunk, pageIndex: pages.length });
-            pages.push({ type: 'questions', items: chunk, pageIndex: pages.length + 1 });
-        }
-        return pages;
-    };
+const getPages = () => {
+  const pages = [];
+  
+  // Her 5 gönüllü için 1 isimlik sayfası + 1 soru sayfası
+  for (let i = 0; i < volunteers.length; i += 5) {
+    const chunk = volunteers.slice(i, i + 5);
+    
+    // İsimlik sayfası
+    pages.push({ 
+      type: 'names', 
+      items: chunk
+    });
+    
+    // Soru sayfası
+    pages.push({ 
+      type: 'questions', 
+      items: chunk
+    });
+  }
+  console.log('📄 Toplam Sayfa:', pages.length, 'Gönüllü:', volunteers.length); 
+  return pages;
+};
 
-    return (
-      <div className="space-y-6">
-        {/* BALKIZ & CONTROLS */}
-        <div className="no-print">
-           <BalkizRainbowConsole 
-              aiState={aiState}
-              activeAction={activeAction}
-              warnings={warnings}
-           />
-           
-           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
-              <div className="flex flex-col gap-2">
-                 <div className="flex items-center gap-2 text-xs font-black text-slate-400 uppercase tracking-tighter"><Settings2 size={12}/> Kenar Boşluğu</div>
-                 <input type="range" min="0" max="30" value={pagePadding} onChange={(e) => setPagePadding(parseInt(e.target.value))} className="w-full h-2 bg-slate-100 rounded-lg cursor-pointer accent-indigo-600"/>
-              </div>
+return (
+  <div className="space-y-6">
+    {/* BALKIZ & CONTROLS - Ekranda görünür, yazdırmada GİZLİ */}
+    <div className="no-print">
+       <BalkizRainbowConsole 
+          aiState={aiState}
+          activeAction={activeAction}
+          warnings={warnings}
+       />
+       
+       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
+          <div className="flex flex-col gap-2">
+             <div className="flex items-center gap-2 text-xs font-black text-slate-400 uppercase tracking-tighter">
+               <Settings2 size={12}/> Kenar Boşluğu
+             </div>
+             <input 
+               type="range" 
+               min="0" 
+               max="30" 
+               value={pagePadding} 
+               onChange={(e) => setPagePadding(parseInt(e.target.value))} 
+               className="w-full h-2 bg-slate-100 rounded-lg cursor-pointer accent-indigo-600"
+             />
+          </div>
 
-              <div className="flex flex-col gap-2">
-                 <div className="flex items-center gap-2 text-xs font-black text-slate-400 uppercase tracking-tighter"><MoveVertical size={12}/> Dikdörtgenleştir</div>
-                 <input type="range" min="0" max="30" value={verticalCompression} onChange={(e) => setVerticalCompression(parseInt(e.target.value))} className="w-full h-2 bg-slate-100 rounded-lg cursor-pointer accent-orange-500"/>
-              </div>
+          <div className="flex flex-col gap-2">
+             <div className="flex items-center gap-2 text-xs font-black text-slate-400 uppercase tracking-tighter">
+               <MoveVertical size={12}/> Dikdörtgenleştir
+             </div>
+             <input 
+               type="range" 
+               min="0" 
+               max="30" 
+               value={verticalCompression} 
+               onChange={(e) => setVerticalCompression(parseInt(e.target.value))} 
+               className="w-full h-2 bg-slate-100 rounded-lg cursor-pointer accent-orange-500"
+             />
+          </div>
 
-              <div className="flex flex-col gap-2">
-                 <div className="flex items-center gap-2 text-xs font-black text-slate-400 uppercase tracking-tighter"><Maximize size={12}/> Genel Ölçek</div>
-                 <input type="range" min="70" max="100" value={globalScale} onChange={(e) => setGlobalScale(parseInt(e.target.value))} className="w-full h-2 bg-slate-100 rounded-lg cursor-pointer accent-indigo-600"/>
-              </div>
+          <div className="flex flex-col gap-2">
+             <div className="flex items-center gap-2 text-xs font-black text-slate-400 uppercase tracking-tighter">
+               <Maximize size={12}/> Genel Ölçek
+             </div>
+             <input 
+               type="range" 
+               min="70" 
+               max="100" 
+               value={globalScale} 
+               onChange={(e) => setGlobalScale(parseInt(e.target.value))} 
+               className="w-full h-2 bg-slate-100 rounded-lg cursor-pointer accent-indigo-600"
+             />
+          </div>
 
-              <div className="flex items-end">
-                <button onClick={handleAutoFix} className="w-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 text-white px-6 py-3 rounded-xl font-bold flex gap-2 items-center justify-center shadow-lg shadow-fuchsia-200 transform active:scale-95 transition-all">
-                  <Wand2 size={18}/> B.A.L.K.I.Z. Düzenlesin
-                </button>
-              </div>
-           </div>
-        </div>
+          <div className="flex items-end">
+            <button 
+              onClick={handleAutoFix} 
+              className="w-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 text-white px-6 py-3 rounded-xl font-bold flex gap-2 items-center justify-center shadow-lg shadow-fuchsia-200 transform active:scale-95 transition-all"
+            >
+              <Wand2 size={18}/> B.A.L.K.I.Z. Düzenlesin
+            </button>
+          </div>
+       </div>
+    </div>
+{/* PAGE RENDERER */}
+<div className="block space-y-12 pb-20 print:space-y-0 print:pb-0">
+  {getPages().map((page, pIndex) => (
+    <div 
+      key={pIndex}
+           className="print-page .print-page bg-white shadow-2xl mx-auto overflow-hidden print:shadow-none print:m-0" 
+style={{ 
+          padding: `${pagePadding}mm`,
+          marginBottom: pIndex < getPages().length - 1 ? '3rem' : '0'
+        }}
+    >
+      <div 
+        className="grid grid-cols-2 content-start w-full h-full bg-white"
+        style={{
+          transform: `scale(${globalScale / 100})`,
+          transformOrigin: 'top center',
+          height: `${100 - verticalCompression}%`,
+          gridTemplateRows: `repeat(${ROWS_PER_PAGE}, 1fr)`,
+          gap: `${cardGap}mm`
+        }}
+      >
+        {page.items.map((vol) => {
+          const activeNameSize = vol.nameSize || 60;
+          const activeSurnameSize = vol.surnameSize || 12;
+          const activeNameY = vol.nameY || 0;
+          const activeSurnameY = vol.surnameY || 0;
+          const nameData = formatNameDisplay(vol.name);
+          
+          return (
+            <React.Fragment key={vol.id}>
+              {/* SOL KART */}
+              <div className="relative group w-full h-full overflow-visible border border-dashed border-slate-100 hover:border-indigo-400 transition-all bg-white print:border-none">
+                <div className="absolute inset-0 w-full h-full z-0 overflow-hidden">
+                  <img 
+                    src={page.type === 'names' ? IMAGES.NAME_BG : IMAGES.QUESTION_BG} 
+                    className="w-full h-full object-fill" 
+                    alt="bg" 
+                  />
+                </div>
 
-        {/* PAGE RENDERER */}
-        <div className="flex flex-col items-center gap-12 pb-20 print-container">
-          {getPages().map((page, pIndex) => (
-            <div key={pIndex} className="relative">
-               <div className="a4-page bg-white shadow-2xl mx-auto overflow-hidden" style={{ width: '210mm', height: '297mm', padding: `${pagePadding}mm` }}>
-                  <div 
-                    className="grid grid-cols-2 content-start w-full h-full bg-white"
-                    style={{
-                        transform: `scale(${globalScale / 100})`,
-                        transformOrigin: 'top center',
-                        height: `${100 - verticalCompression}%`,
-                        gridTemplateRows: `repeat(${ROWS_PER_PAGE}, 1fr)`,
-                        gap: `${cardGap}mm`
-                    }}
+                <div className="absolute top-2 right-2 z-50 no-print opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button 
+                    onClick={() => removeVolunteer(vol.id)} 
+                    className="p-1 bg-white text-red-500 rounded-full shadow-sm border border-red-50 hover:scale-110"
                   >
-                      {page.items.map((vol) => {
-                         const activeNameSize = vol.nameSize || 60;
-                         const activeSurnameSize = vol.surnameSize || 12;
-                         const activeNameY = vol.nameY || 0;
-                         const activeSurnameY = vol.surnameY || 0;
-                         const nameData = formatNameDisplay(vol.name);
-                         
-                         return (
-                           <React.Fragment key={vol.id}>
-                              {[0, 1].map((colIndex) => (
-                                 <div key={`${vol.id}-${colIndex}`} className="relative group w-full h-full overflow-visible border border-dashed border-slate-100 hover:border-indigo-400 transition-all bg-white">
-                                    <div className="absolute inset-0 w-full h-full z-0 overflow-hidden">
-                                       <img src={page.type === 'names' ? IMAGES.NAME_BG : IMAGES.QUESTION_BG} className="w-full h-full object-fill" alt="bg" />
-                                    </div>
+                    <Trash2 size={10}/>
+                  </button>
+                </div>
 
-                                    <div className="absolute top-2 right-2 z-50 no-print opacity-0 group-hover:opacity-100 transition-opacity">
-                                      <button 
-                                        onClick={() => removeVolunteer(vol.id)} 
-                                        className="p-1 bg-white text-red-500 rounded-full shadow-sm border border-red-50 hover:scale-110"
-                                      >
-                                        <Trash2 size={10}/>
-                                      </button>
-                                    </div>
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-4">
+                  {page.type === 'names' ? (
+                    <div className="relative text-center w-full">
+                      <div className="flex flex-col items-center justify-center leading-none">
+                        <InteractiveText 
+                          text={nameData.first} 
+                          size={activeNameSize} 
+                          offsetY={activeNameY}
+                          onUpdate={(s, o) => handleInteractiveUpdate(vol.id, 'name', s, o)}
+                          className="font-comic font-bold text-slate-800 whitespace-nowrap drop-shadow-sm"
+                        />
+                        <InteractiveText 
+                          text={nameData.last} 
+                          size={activeSurnameSize} 
+                          offsetY={activeSurnameY}
+                          onUpdate={(s, o) => handleInteractiveUpdate(vol.id, 'surname', s, o)}
+                          className="font-comic font-black text-slate-900 uppercase whitespace-nowrap mt-1 drop-shadow-sm"
+                        />
+                      </div>
+                      <div className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity no-print">
+                        <button 
+                          onClick={() => { 
+                            const n = prompt("Düzenle:", vol.name); 
+                            if(n) updateVolunteer(vol.id, 'name', n); 
+                          }} 
+                          className="bg-indigo-50 text-indigo-600 p-1.5 rounded-lg text-xs font-bold shadow-sm"
+                        >
+                          ✐
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <textarea 
+                      value={vol.question || ''} 
+                      onChange={(e) => updateVolunteer(vol.id, 'question', e.target.value)}
+                      className="w-[85%] h-[60%] bg-transparent outline-none text-center font-comic resize-none flex items-center justify-center pt-8 text-slate-700 print:resize-none"
+                      style={{ fontSize: `${(activeNameSize) * 0.4}px` }}
+                    />
+                  )}
+                </div>
+              </div>
 
-                                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-4">
-                                       {page.type === 'names' ? (
-                                          <div className="relative text-center w-full">
-                                              <div className="flex flex-col items-center justify-center leading-none">
-                                                  <InteractiveText 
-                                                      text={nameData.first} size={activeNameSize} offsetY={activeNameY}
-                                                      onUpdate={(s, o) => handleInteractiveUpdate(vol.id, 'name', s, o)}
-                                                      className="font-comic font-bold text-slate-800 whitespace-nowrap drop-shadow-sm"
-                                                  />
-                                                  <InteractiveText 
-                                                      text={nameData.last} size={activeSurnameSize} offsetY={activeSurnameY}
-                                                      onUpdate={(s, o) => handleInteractiveUpdate(vol.id, 'surname', s, o)}
-                                                      className="font-comic font-black text-slate-900 uppercase whitespace-nowrap mt-1 drop-shadow-sm"
-                                                  />
-                                              </div>
-                                              <div className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity no-print">
-                                                  <button onClick={() => { const n = prompt("Düzenle:", vol.name); if(n) updateVolunteer(vol.id, 'name', n); }} className="bg-indigo-50 text-indigo-600 p-1.5 rounded-lg text-xs font-bold shadow-sm">✐</button>
-                                              </div>
-                                          </div>
-                                       ) : (
-                                          <textarea 
-                                              value={vol.question || ''} 
-                                              onChange={(e) => updateVolunteer(vol.id, 'question', e.target.value)}
-                                              className="w-[85%] h-[60%] bg-transparent outline-none text-center font-comic resize-none flex items-center justify-center pt-8 text-slate-700"
-                                              style={{ fontSize: `${(activeNameSize) * 0.4}px` }}
-                                          />
-                                       )}
-                                    </div>
-                                 </div>
-                              ))}
-                           </React.Fragment>
-                         );
-                      })}
-                  </div>
-               </div>
-            </div>
-          ))}
-        </div>
+              {/* SAĞ KART (AYNI İÇERİK) */}
+              <div className="relative group w-full h-full overflow-visible border border-dashed border-slate-100 hover:border-indigo-400 transition-all bg-white print:border-none">
+                <div className="absolute inset-0 w-full h-full z-0 overflow-hidden">
+                  <img 
+                    src={page.type === 'names' ? IMAGES.NAME_BG : IMAGES.QUESTION_BG} 
+                    className="w-full h-full object-fill" 
+                    alt="bg" 
+                  />
+                </div>
+
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-4">
+                  {page.type === 'names' ? (
+                    <div className="relative text-center w-full">
+                      <div className="flex flex-col items-center justify-center leading-none">
+                        <InteractiveText 
+                          text={nameData.first} 
+                          size={activeNameSize} 
+                          offsetY={activeNameY}
+                          onUpdate={(s, o) => handleInteractiveUpdate(vol.id, 'name', s, o)}
+                          className="font-comic font-bold text-slate-800 whitespace-nowrap drop-shadow-sm"
+                        />
+                        <InteractiveText 
+                          text={nameData.last} 
+                          size={activeSurnameSize} 
+                          offsetY={activeSurnameY}
+                          onUpdate={(s, o) => handleInteractiveUpdate(vol.id, 'surname', s, o)}
+                          className="font-comic font-black text-slate-900 uppercase whitespace-nowrap mt-1 drop-shadow-sm"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <textarea 
+                      value={vol.question || ''} 
+                      onChange={(e) => updateVolunteer(vol.id, 'question', e.target.value)}
+                      className="w-[85%] h-[60%] bg-transparent outline-none text-center font-comic resize-none flex items-center justify-center pt-8 text-slate-700 print:resize-none"
+                      style={{ fontSize: `${(activeNameSize) * 0.4}px` }}
+                    />
+                  )}
+                </div>
+              </div>
+            </React.Fragment>
+          );
+        })}
       </div>
-    );
+    </div>
+  ))}
+</div>
+
+
+  </div>
+);
+
   }
 
   // --- MODULE 3: COLLAGE APP ---
@@ -1782,7 +1934,7 @@ function InfinityScheduler({ onNotify }) {
         {/* A4 PAGE */}
         <div className="flex justify-center pb-20 print-container">
             <div 
-              className="a4-page bg-white shadow-2xl overflow-hidden flex flex-col" 
+              className=".print-page bg-white shadow-2xl overflow-hidden flex flex-col" 
               style={{ 
                   width: '210mm', 
                   height: '297mm', 
