@@ -509,11 +509,11 @@ const BalkizRainbowConsole = ({
 
   // Typing animation
   useEffect(() => {
-    if (targetText && isOpen && targetText !== displayText) { 
+    if (targetText && isOpen) { 
       setIsAnimating(true); 
       setDisplayText(""); 
     }
-  }, [targetText, isOpen, displayText]);
+  }, [targetText, isOpen]);
 
   useEffect(() => {
     if (!isOpen || !targetText) return;
