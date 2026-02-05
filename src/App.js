@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-// App.js - 1. SATIR
-import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Calendar, Users, FileText, Image as ImageIcon, Printer, 
   Plus, Trash2, Upload, X, 
