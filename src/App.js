@@ -1457,11 +1457,11 @@ function InfinityScheduler({ onNotify }) {
   // --- MODULE 2: NAME TAG APP ---
   function NameTagApp({ onNotify }) {
     const ROWS_PER_PAGE = 5;
-    const [globalNameSize, setGlobalNameSize] = useState(60);
-    const [globalSurnameSize, setGlobalSurnameSize] = useState(12);
+    const [] = useState(60);
+    const [] = useState(12);
     
     const [pagePadding, setPagePadding] = useState(5); 
-    const [cardGap, setCardGap] = useState(2);
+    const [cardGap] = useState(2);
     const [verticalCompression, setVerticalCompression] = useState(0); 
     const [globalScale, setGlobalScale] = useState(100); 
     
