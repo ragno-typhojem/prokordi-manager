@@ -1,16 +1,17 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+// App.js - 1. SATIR
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Calendar, Users, FileText, Image as ImageIcon, Printer, 
-  Plus, Trash2, Settings, Upload, GripVertical, X, 
-  CheckCircle2, AlertTriangle, BookOpen, GraduationCap, 
-  AlertOctagon, UserCheck, ShieldCheck, Award, AlertCircle, 
-  Copy, Repeat, Search, Package, BarChart3, Sparkles, BrainCircuit,
-  RefreshCw, Wand2, XCircle, Zap, ChevronDown, ChevronUp, Mic, Play,
-  LayoutDashboard, Coffee, Utensils, Projector, Sun, Loader2,
-  Type, MousePointer2, Minus, PlusCircle, Maximize2, Smile,
-  ArrowUpCircle, ArrowDownCircle, Camera, Settings2, MoveVertical,
-  Maximize, MessageCircle, RotateCcw, Database
+  Plus, Trash2, Upload, X, 
+  CheckCircle2, BookOpen, GraduationCap, 
+  Search, Package, BarChart3, Sparkles,
+  RefreshCw, Wand2, Zap, ChevronDown, ChevronUp,
+  Type, Minus, PlusCircle, Maximize2, Smile,
+  Camera, Settings2, MoveVertical,
+  Maximize
 } from 'lucide-react';
+
 
 /*
 ProManager+ v28 ( önceki 28 versiyonu da çöpe attım say) — Teknik Özet (Geliştirici Yorumu)
