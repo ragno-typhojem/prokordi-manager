@@ -627,22 +627,19 @@ function InfinityScheduler({ onNotify }) {
   useEffect(() => { db.save(DB_KEYS.TIMESLOTS, timeSlots); }, [timeSlots]);
   useEffect(() => { db.save(DB_KEYS.CLASSES, classes); }, [classes]);
 
-  // --- HELPER: SINIF SEVİYESİ ALGILAMA ---
-  const detectGrade = (className) => {
-    // "Anasınıfı", "Kreş" kontrolü
-    if (className.toLowerCase().includes('ana') || className.toLowerCase().includes('kreş')) return 0;
-    
-    // Sayıyı çek (4-A -> 4, 5. Sınıf -> 5)
-    const match = className.match(/(\d+)/);
+const detectGrade = (className) => {
+    if (!className) return 0;
+    const str = className.toString().toLowerCase();
+    if (str.includes('ana') || str.includes('kreş')) return 0;
+    const match = str.match(/(\d+)/);
     return match ? parseInt(match[0]) : 0;
   };
-
   // --- HELPER: NORMALİZASYON (Türkçe Karakter) ---
   const normalize = (text) => text ? text.toLocaleLowerCase('tr').trim() : '';
 
   // --- CONFLICT & WARNING LOGIC (B.A.L.K.I.Z. BRAIN) ---
   // useCallback ile sarmaladık ki sonsuz döngü olmasın
-  const calculateConflicts = useCallback(() => {
+const calculateConflicts = useCallback(() => {
     const newWarnings = [];
     const lessonSlots = timeSlots.filter(t => t.type === 'lesson');
 
@@ -651,22 +648,33 @@ function InfinityScheduler({ onNotify }) {
     classes.forEach(cls => {
       const grade = detectGrade(cls.name);
       
-      // 1. MÜFREDAT KONTROLÜ (PEDAGOJİK UYARILAR)
+      // 1. SINIF SEVİYESİ KONTROLÜ (GÜNCELLENDİ)
       Object.values(cls.schedule).forEach(slot => {
-        const actName = normalize(slot.name);
+        const activity = activities.find(a => a.id === slot.activityId);
         
-        // İLKOKUL (0-4) UYARILARI
-        if (grade > 0 && grade <= 4) {
-          if (LOGIC_CONFIG.primaryBlacklist.some(bad => actName.includes(bad))) {
-             newWarnings.push({ 
-               type: 'protocol', 
-               msg: `Ufak Bir Şey: ${cls.name} (İlkokul) sınıfına "${slot.name}" verilmiş, kontrol edebilirsin.` 
-             });
-          }
+        if (activity) {
+            // Eğer allowedGrades tanımlıysa ve boş değilse, bu kurala kesinlikle uyulmalı
+            if (activity.allowedGrades && activity.allowedGrades.length > 0) {
+                if (!activity.allowedGrades.includes(grade)) {
+                    newWarnings.push({ 
+                        type: 'protocol', 
+                        msg: `Seviye Hatası: ${cls.name} (${grade}. Sınıf) sınıfına "${activity.name}" koydun ama bu etkinlik sadece [${activity.allowedGrades.join(', ')}] sınıfları için.` 
+                    });
+                }
+            } else {
+                // FALLBACK: Eğer butonlardan seçim yapmadıysan eski sistem (Kelime bazlı) kontrol eder
+                const actName = normalize(activity.name);
+                if (grade > 0 && grade <= 4) {
+                    const primaryBlacklist = ['kimya', 'fizik', 'robot', 'yapay zeka','geleceğe mektup'];
+                    if (primaryBlacklist.some(bad => actName.includes(bad))) {
+                         newWarnings.push({ type: 'protocol', msg: `Pedagoji: ${cls.name} için "${slot.name}" ağır gelebilir.` });
+                    }
+                }
+            }
         }
       });
 
-      // 2. TEKRAR VE BOŞLUK KONTROLÜ
+      // 2. TEKRAR VE BOŞLUK KONTROLÜ (Aynı kaldı)
       const actCounts = {}, volCounts = {};
       Object.values(cls.schedule).forEach(s => {
         if (s.activityId) actCounts[s.activityId] = (actCounts[s.activityId] || 0) + 1;
@@ -686,7 +694,7 @@ function InfinityScheduler({ onNotify }) {
       });
     });
 
-    // 3. GLOBAL ÇAKIŞMA VE STOK
+    // 3. GLOBAL ÇAKIŞMA VE STOK (Aynı kaldı)
     lessonSlots.forEach(slot => {
       const volMap = {};
       const actUsage = {};
@@ -721,8 +729,7 @@ function InfinityScheduler({ onNotify }) {
     });
 
     return newWarnings;
-  }, [classes, activities, timeSlots, volunteers, LOGIC_CONFIG.primaryBlacklist]);
-
+  }, [classes, activities, timeSlots, volunteers]);
   // Warning Listener
   useEffect(() => {
     setWarnings(calculateConflicts());
@@ -731,27 +738,36 @@ function InfinityScheduler({ onNotify }) {
 
   // --- DAĞITIM MOTORU (DISTRIBUTION ENGINE) ---
 
-  // Kural 1: KESİN YASAKLAR (Hard Constraints)
-  const checkConstraints = (activityName, className) => {
-    const grade = detectGrade(className);
-    const nAct = normalize(activityName);
+// --- GÜVENLİ DAĞITIM MOTORU ---
 
-    // İLKOKUL (0-4) FİLTRESİ
-    if (grade > 0 && grade <= 4) {
-      // Blacklist kontrolü (Kimya, Fizik vb. buraya takılır ve FALSE döner)
-      if (LOGIC_CONFIG.primaryBlacklist.some(bad => nAct.includes(bad))) return false;
+  // Yardımcı: Kısıtlama Kontrolü (Hata vermeyen versiyon)
+ const checkConstraints = useCallback((activity, className) => {
+    if (!activity) return false;
+    
+    const grade = detectGrade(className);
+    
+    // GÜVENLİK: undefined gelirse boş dizi yap
+    const safeGrades = activity.allowedGrades || [];
+
+    // KURAL A: Eğer hoca butonlarla sınıf seçtiyse, SADECE o sınıflara izin ver.
+    if (safeGrades.length > 0) {
+        return safeGrades.includes(grade);
     }
 
-    // ORTAOKUL (5+) FİLTRESİ
+    // KURAL B (FALLBACK): Seçim yoksa eski yasaklı kelime mantığını kullan
+    const nAct = activity.name ? activity.name.toLocaleLowerCase('tr').trim() : '';
+    const primaryBlacklist = ['kimya', 'fizik', 'robot', 'yapay zeka', 'geleceğe mektup'];
+
+    if (grade > 0 && grade <= 4) {
+      if (primaryBlacklist.some(bad => nAct.includes(bad))) return false;
+    }
     if (grade >= 5) {
-      // 5. Sınıf artık ortaokul, Kimya alabilir.
-      // Ama "İlkokul Etkinliği" almamalı.
       if (nAct.includes('ilkokul')) return false;
       if (nAct.includes('boyama') && !nAct.includes('tuval')) return false;
     }
 
-    return true; // Engel yoksa dağıt
-  };
+    return true;
+  }, []);
 
   // Kural 2: PUANLAMA (Soft Preferences)
   const getSuitabilityScore = (activityName, className) => {
@@ -1199,100 +1215,151 @@ function InfinityScheduler({ onNotify }) {
        {icon} {label}
     </button>
   );
+// --- SETUP MODULE (GÜNCELLENMİŞ VERSİYON) ---
+const SetupModule = ({ activities, setActivities, timeSlots, setTimeSlots, classes, setClasses }) => {
+    const [newClassName, setNewClassName] = useState('');
 
-  const SetupModule = ({ activities, setActivities, timeSlots, setTimeSlots, classes, setClasses }) => {
-      const [newClassName, setNewClassName] = useState('');
+    const handleAddClass = () => {
+        if(!newClassName.trim()) return;
+        setClasses([...classes, {id: uuid(), name: newClassName, schedule: {}}]);
+        setNewClassName('');
+    };
 
-      const handleAddClass = () => {
-          if(!newClassName.trim()) return;
-          setClasses([...classes, {id: uuid(), name: newClassName, schedule: {}}]);
-          setNewClassName('');
-      };
+    // Sınıf seviyesini aç/kapa yapan fonksiyon (Component içinde tanımlı)
+    const toggleGrade = (actId, grade) => {
+        setActivities(prevActivities => prevActivities.map(act => {
+            if (act.id !== actId) return act;
+            const currentGrades = act.allowedGrades || [];
+            
+            if (currentGrades.includes(grade)) {
+                return { ...act, allowedGrades: currentGrades.filter(g => g !== grade) };
+            } else {
+                return { ...act, allowedGrades: [...currentGrades, grade].sort((a,b)=>a-b) };
+            }
+        }));
+    };
 
-      return (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fadeIn text-slate-800">
-              <div className="space-y-6">
-                <div className="bg-white p-6 rounded-xl shadow border border-slate-200">
-                    <h3 className="font-bold text-lg mb-4 text-slate-800">Etkinlik Kataloğu ve Stoklar</h3>
-                    <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
-                        {activities.map(act => (
-                            <div key={act.id} className={`flex items-center justify-between p-3 rounded-lg border ${act.isMust ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-100'}`}>
-                                <div className="flex-1">
-                                    <input className="font-bold bg-transparent border-none w-full mb-1 text-slate-800" value={act.name} onChange={e=>setActivities(activities.map(a=>a.id===act.id?{...a, name:e.target.value}:a))}/>
-                                    <div className="flex gap-2 text-xs mt-1 items-center flex-wrap">
-                                        <select value={act.cat} onChange={e=>setActivities(activities.map(a=>a.id===act.id?{...a, cat:e.target.value}:a))} className="bg-white border border-slate-200 rounded px-1 py-0.5 text-slate-600">
-                                          <option value="science">Bilim</option>
-                                          <option value="art">Sanat</option>
-                                          <option value="tech">Teknoloji</option>
-                                        </select>
-                                        <button onClick={()=>setActivities(activities.map(a=>a.id===act.id?{...a, isMust:!act.isMust}:a))} className={`px-2 py-0.5 rounded-full flex items-center gap-1 border ${act.isMust ? 'bg-red-600 text-white border-red-600' : 'bg-slate-200 border-slate-300 text-slate-500'}`}>
-                                          {act.isMust ? 'ZORUNLU' : 'Opsiyonel'}
-                                        </button>
-                                        <div className="flex items-center gap-1 bg-white border border-slate-200 rounded px-1.5 py-0.5">
-                                            <Package size={12} className="text-slate-400"/>
-                                            <input 
-                                                type="number" 
-                                                min="1"
-                                                className="w-10 text-center outline-none bg-transparent font-bold text-slate-600"
-                                                value={act.boxCount || ''}
-                                                placeholder="Stok"
-                                                onChange={e=>setActivities(activities.map(a=>a.id===act.id?{...a, boxCount:parseInt(e.target.value)||1}:a))}
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                                <button onClick={()=>setActivities(activities.filter(a=>a.id!==act.id))} className="text-slate-400 hover:text-red-500 ml-2"><Trash2 size={18}/></button>
-                            </div>
-                        ))}
-                        <button onClick={()=>setActivities([...activities, {id:uuid(), name:'Yeni', cat:'science', isMust:false, boxCount:20}])} className="w-full bg-slate-50 py-2 rounded font-bold text-slate-500 border border-dashed border-slate-300 hover:bg-slate-100 hover:text-indigo-600">+ Ekle</button>
-                    </div>
-                </div>
-              </div>
-              
-              <div className="space-y-6">
-                  <div className="bg-white p-6 rounded-xl shadow border border-slate-200">
-                      <h3 className="font-bold text-lg mb-4">Şubeler</h3>
-                      <div className="flex flex-wrap gap-2 mb-4">
-                          {classes.map(c=>(
-                            <div key={c.id} className="bg-slate-100 px-3 py-2 rounded flex gap-2 font-bold border border-slate-200 text-slate-700">
-                              {c.name} 
-                              <button onClick={()=>setClasses(classes.filter(x=>x.id!==c.id))} className="text-red-400 hover:text-red-600">x</button>
-                            </div>
-                          ))}
-                      </div>
-                      <div className="flex gap-2">
-                          <input 
-                              className="border border-slate-200 bg-slate-50 p-2 rounded text-sm flex-1 outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800" 
-                              placeholder="Yeni Sınıf Adı (Örn: 5-C)" 
-                              value={newClassName}
-                              onChange={(e) => setNewClassName(e.target.value)}
-                              onKeyDown={(e) => e.key === 'Enter' && handleAddClass()}
-                          />
-                          <button onClick={handleAddClass} className="bg-indigo-600 text-white px-4 py-2 rounded font-bold text-sm hover:bg-indigo-700">Ekle</button>
-                      </div>
-                  </div>
-                  <div className="bg-white p-6 rounded-xl shadow border border-slate-200">
-                      <h3 className="font-bold text-lg mb-4">Zamanlar</h3>
-                      {timeSlots.map((slot,i)=>(
-                          <div key={slot.id} className="flex gap-2 items-center text-sm mb-2">
-                              <input type="time" value={slot.start} onChange={e=>{const n=[...timeSlots];n[i].start=e.target.value;setTimeSlots(n)}} className="border border-slate-200 bg-slate-50 p-1 rounded text-slate-800"/>-
-                              <input type="time" value={slot.end} onChange={e=>{const n=[...timeSlots];n[i].end=e.target.value;setTimeSlots(n)}} className="border border-slate-200 bg-slate-50 p-1 rounded text-slate-800"/>
-                              <select value={slot.type} onChange={e=>{const n=[...timeSlots];n[i].type=e.target.value;setTimeSlots(n)}} className="border p-1 rounded text-slate-800">
-                                  <option value="lesson">Ders</option>
-                                  <option value="break">Teneffüs</option>
-                                  <option value="lunch">Öğle Arası</option>
-                                  <option value="presentation">Sunum</option>
-                                  <option value="outdoor">Dış Etkinlik</option>
-                              </select>
-                              <button onClick={()=>{const n=[...timeSlots];n.splice(i,1);setTimeSlots(n)}} className="text-red-400 hover:text-red-600"><X size={16}/></button>
+    return (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fadeIn text-slate-800">
+            <div className="space-y-6">
+              <div className="bg-white p-6 rounded-xl shadow border border-slate-200">
+                  <h3 className="font-bold text-lg mb-4 text-slate-800 flex justify-between items-center">
+                      <span>Etkinlik Kataloğu & Sınıf Uyumu</span>
+                      <span className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-1 rounded">B.A.L.K.I.Z. buna göre dağıtır</span>
+                  </h3>
+                  <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                      {activities.map(act => (
+                          <div key={act.id} className={`p-4 rounded-lg border flex flex-col gap-3 ${act.isMust ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200'}`}>
+                              {/* İsim ve Silme */}
+                              <div className="flex items-center justify-between gap-2">
+                                  <input 
+                                      className="font-bold bg-transparent border-none w-full text-slate-800 text-lg focus:outline-none" 
+                                      value={act.name} 
+                                      onChange={e=>setActivities(activities.map(a=>a.id===act.id?{...a, name:e.target.value}:a))}
+                                  />
+                                  <button onClick={()=>setActivities(activities.filter(a=>a.id!==act.id))} className="text-slate-400 hover:text-red-500"><Trash2 size={18}/></button>
+                              </div>
+                              
+                              {/* Kategori ve Stok */}
+                              <div className="flex gap-2 text-xs items-center flex-wrap border-b border-slate-200/50 pb-2">
+                                  <select value={act.cat} onChange={e=>setActivities(activities.map(a=>a.id===act.id?{...a, cat:e.target.value}:a))} className="bg-white border border-slate-200 rounded px-2 py-1 text-slate-600">
+                                      <option value="science">Bilim</option>
+                                      <option value="art">Sanat</option>
+                                      <option value="tech">Teknoloji</option>
+                                  </select>
+                                  <button onClick={()=>setActivities(activities.map(a=>a.id===act.id?{...a, isMust:!act.isMust}:a))} className={`px-2 py-1 rounded-full flex items-center gap-1 border transition-colors ${act.isMust ? 'bg-red-600 text-white border-red-600' : 'bg-white border-slate-300 text-slate-500'}`}>
+                                      {act.isMust ? 'ZORUNLU' : 'Opsiyonel'}
+                                  </button>
+                                  <div className="flex items-center gap-1 bg-white border border-slate-200 rounded px-2 py-1">
+                                      <Package size={14} className="text-slate-400"/>
+                                      <input 
+                                          type="number" min="1"
+                                          className="w-10 text-center outline-none bg-transparent font-bold text-slate-600"
+                                          value={act.boxCount || ''} placeholder="Stok"
+                                          onChange={e=>setActivities(activities.map(a=>a.id===act.id?{...a, boxCount:parseInt(e.target.value)||1}:a))}
+                                      />
+                                  </div>
+                              </div>
+
+                              {/* SINIF SEÇİCİ */}
+                              <div>
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1">Uygun Sınıflar (0=Ana Sınıfı)</span>
+                                  <div className="flex gap-1 flex-wrap">
+                                      {[0, 1, 2, 3, 4, 5, 6, 7, 8].map(grade => {
+                                          const isSelected = (act.allowedGrades || []).includes(grade);
+                                          return (
+                                              <button
+                                                  key={grade}
+                                                  onClick={() => toggleGrade(act.id, grade)}
+                                                  className={`w-7 h-7 flex items-center justify-center rounded text-xs font-bold transition-all ${
+                                                      isSelected 
+                                                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200 scale-105' 
+                                                      : 'bg-white border border-slate-200 text-slate-400 hover:border-indigo-300 opacity-60 hover:opacity-100'
+                                                  }`}
+                                              >
+                                                  {grade === 0 ? 'A' : grade}
+                                              </button>
+                                          );
+                                      })}
+                                      {(act.allowedGrades || []).length === 0 && (
+                                          <span className="text-[10px] text-orange-500 italic ml-2 flex items-center self-center">
+                                              * Seçim yok, B.A.L.K.I.Z. tahmini dağıtır.
+                                          </span>
+                                      )}
+                                  </div>
+                              </div>
                           </div>
                       ))}
-                      <button onClick={()=>setTimeSlots([...timeSlots, {id:uuid(), start:'12:00', end:'12:40', type:'lesson'}])} className="text-indigo-600 text-xs font-bold hover:text-indigo-800">+ Ekle</button>
+                      <button onClick={()=>setActivities([...activities, {id:uuid(), name:'Yeni Etkinlik', cat:'science', isMust:false, boxCount:20, allowedGrades:[]}])} className="w-full bg-slate-50 py-3 rounded-lg font-bold text-slate-500 border-2 border-dashed border-slate-300 hover:bg-slate-100 hover:text-indigo-600 hover:border-indigo-300 transition-all">+ Etkinlik Ekle</button>
                   </div>
               </div>
-          </div>
-      );
-  };
+            </div>
+            
+            {/* SAĞ TARAF (SINIF VE ZAMAN AYARLARI) */}
+            <div className="space-y-6">
+                <div className="bg-white p-6 rounded-xl shadow border border-slate-200">
+                    <h3 className="font-bold text-lg mb-4">Şubeler</h3>
+                    <div className="flex flex-wrap gap-2 mb-4">
+                        {classes.map(c=>(
+                          <div key={c.id} className="bg-slate-100 px-3 py-2 rounded flex gap-2 font-bold border border-slate-200 text-slate-700">
+                            {c.name} 
+                            <button onClick={()=>setClasses(classes.filter(x=>x.id!==c.id))} className="text-red-400 hover:text-red-600">x</button>
+                          </div>
+                        ))}
+                    </div>
+                    <div className="flex gap-2">
+                        <input 
+                            className="border border-slate-200 bg-slate-50 p-2 rounded text-sm flex-1 outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800" 
+                            placeholder="Yeni Sınıf Adı (Örn: 5-C)" 
+                            value={newClassName}
+                            onChange={(e) => setNewClassName(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleAddClass()}
+                        />
+                        <button onClick={handleAddClass} className="bg-indigo-600 text-white px-4 py-2 rounded font-bold text-sm hover:bg-indigo-700">Ekle</button>
+                    </div>
+                </div>
+                <div className="bg-white p-6 rounded-xl shadow border border-slate-200">
+                    <h3 className="font-bold text-lg mb-4">Zamanlar</h3>
+                    {timeSlots.map((slot,i)=>(
+                        <div key={slot.id} className="flex gap-2 items-center text-sm mb-2">
+                            <input type="time" value={slot.start} onChange={e=>{const n=[...timeSlots];n[i].start=e.target.value;setTimeSlots(n)}} className="border border-slate-200 bg-slate-50 p-1 rounded text-slate-800"/>-
+                            <input type="time" value={slot.end} onChange={e=>{const n=[...timeSlots];n[i].end=e.target.value;setTimeSlots(n)}} className="border border-slate-200 bg-slate-50 p-1 rounded text-slate-800"/>
+                            <select value={slot.type} onChange={e=>{const n=[...timeSlots];n[i].type=e.target.value;setTimeSlots(n)}} className="border p-1 rounded text-slate-800">
+                                <option value="lesson">Ders</option>
+                                <option value="break">Teneffüs</option>
+                                <option value="lunch">Öğle Arası</option>
+                                <option value="presentation">Sunum</option>
+                                <option value="outdoor">Dış Etkinlik</option>
+                            </select>
+                            <button onClick={()=>{const n=[...timeSlots];n.splice(i,1);setTimeSlots(n)}} className="text-red-400 hover:text-red-600"><X size={16}/></button>
+                        </div>
+                    ))}
+                    <button onClick={()=>setTimeSlots([...timeSlots, {id:uuid(), start:'12:00', end:'12:40', type:'lesson'}])} className="text-indigo-600 text-xs font-bold hover:text-indigo-800">+ Ekle</button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
   // --- INTERACTIVE TEXT COMPONENT (For Name Tags) ---
   const InteractiveText = ({ 
