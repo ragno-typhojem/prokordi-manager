@@ -735,11 +735,6 @@ const calculateConflicts = useCallback(() => {
     setWarnings(calculateConflicts());
   }, [calculateConflicts]);
 
-
-  // --- DAĞITIM MOTORU (DISTRIBUTION ENGINE) ---
-
-// --- GÜVENLİ DAĞITIM MOTORU ---
-
   // Yardımcı: Kısıtlama Kontrolü (Hata vermeyen versiyon)
  const checkConstraints = useCallback((activity, className) => {
     if (!activity) return false;
@@ -1310,7 +1305,7 @@ const SetupModule = ({ activities, setActivities, timeSlots, setTimeSlots, class
                               </div>
                           </div>
                       ))}
-                      <button onClick={()=>setActivities([...activities, {id:uuid(), name:'Yeni Etkinlik', cat:'science', isMust:false, boxCount:20, allowedGrades:[]}])} className="w-full bg-slate-50 py-3 rounded-lg font-bold text-slate-500 border-2 border-dashed border-slate-300 hover:bg-slate-100 hover:text-indigo-600 hover:border-indigo-300 transition-all">+ Etkinlik Ekle</button>
+                      <button onClick={()=>setActivities([...activities, {id:uuid(), name:'Yeni Etkinlik', cat:'science', isMust:false, boxCount:1, allowedGrades:[1, 2, 3, 4, 5, 6, 7, 8]}])} className="w-full bg-slate-50 py-3 rounded-lg font-bold text-slate-500 border-2 border-dashed border-slate-300 hover:bg-slate-100 hover:text-indigo-600 hover:border-indigo-300 transition-all">+ Etkinlik Ekle</button>
                   </div>
               </div>
             </div>
