@@ -4,7 +4,7 @@ import {
   Calendar, Users, FileText, Image as ImageIcon, Printer, 
   Plus, Trash2, Upload, X, 
   CheckCircle2, BookOpen, GraduationCap, 
-  Search, Package, BarChart3, Sparkles,
+   Package, Sparkles,
   RefreshCw, Wand2, Zap, ChevronDown, ChevronUp,
   Type, Minus, PlusCircle, Maximize2, Smile,
   Camera, Settings2, MoveVertical,
@@ -207,7 +207,7 @@ export default function ProManagerApp() {
     switch (activeTab) {
       case 'scheduler': return <InfinityScheduler onNotify={showNotify} />;
       case 'badges': return <NameTagApp onNotify={showNotify} />;
-      case 'minutes': return <DocumentCreator onNotify={showNotify} />;
+      case 'minutes': return <DocumentCreator />;
       case 'collage': return <CollageApp onNotify={showNotify} />;
       default: return <InfinityScheduler onNotify={showNotify} />;
     }
@@ -1300,15 +1300,6 @@ const NavBtn = ({active, onClick, icon, label}) => (
   </button>
 );
 
-
-
-  const NavBtn = ({active, onClick, icon, label}) => (
-    <button onClick={onClick} className={`px-4 py-2 rounded-lg font-bold flex gap-2 items-center transition-colors ${active ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 no-print'}`}>
-       {icon} {label}
-    </button>
-  );
-
-
   // --- INTERACTIVE TEXT COMPONENT (For Name Tags) ---
   const InteractiveText = ({ 
     text, 
@@ -2051,7 +2042,7 @@ style={{
   }
 
   // --- MODULE 4: DOCUMENT CREATOR ---
-  function DocumentCreator({ onNotify }) {
+  function DocumentCreator({ }) {
     const [formData, setFormData] = useState({ 
       no: '2026/01', 
       date: '', 
