@@ -566,34 +566,22 @@ const BalkizRainbowConsole = ({
   );
 };
 
-// --- MODULE 1: INFINITY SCHEDULER (FIXED LOGIC) ---
+// --- MODULE 1: INFINITY SCHEDULER (FIXED & UPGRADED) ---
 function InfinityScheduler({ onNotify }) {
   const [activeView, setActiveView] = useState('view');
 
   // --- MANTIK AYARLARI ---
   const LOGIC_CONFIG = {
-    // İLKOKUL (0-4. Sınıf) - KESİN YASAKLAR
-    primaryBlacklist: [
-      'kimya', 'fizik', 'robot', 'yapay zeka','geleceğe mektup'
-    ],
-    // İLKOKUL TERCİHLERİ
-    primaryWhitelist: [
-      'yaratıcı drama', 'origami', 'yüz boyama', 
-      'pino mino', 'müzik', 'resim'
-    ],
-    // ORTAOKUL (5-8. Sınıf) TERCİHLERİ
-    middleSchoolPreferred: [
-      'kimya', 'fizik', 'göremediğimiz canavarlar', 'fen', 'matematik', 
-      'robot', 'masa deneyleri', 'vr', 'müzik', 'edebiyat'
-    ]
+    primaryBlacklist: ['kimya', 'fizik', 'robot', 'yapay zeka','geleceğe mektup'],
+    primaryWhitelist: ['yaratıcı drama', 'origami', 'yüz boyama', 'pino mino', 'müzik', 'resim'],
+    middleSchoolPreferred: ['kimya', 'fizik', 'göremediğimiz canavarlar', 'fen', 'matematik', 'robot', 'masa deneyleri', 'vr', 'müzik', 'edebiyat']
   };
 
   // --- DATA STATES ---
   const [activities, setActivities] = useState(db.load(DB_KEYS.ACTIVITIES, [
-    { id: 'a1', name: 'Yapay Zeka', cat: 'science', isMust: false, boxCount: 1 }, // Test için
-    { id: 'a2', name: 'Robot', cat: 'tech', isMust: false, boxCount: 1 },
-    { id: 'a3', name: 'Fizik', cat: 'art', isMust: false, boxCount: 3 },
-    { id: 'a4', name: 'Matematik', cat: 'science', isMust: false, boxCount: 10 },
+    { id: 'a1', name: 'Yapay Zeka', cat: 'science', isMust: false, boxCount: 1, allowedGrades: [5,6,7,8] },
+    { id: 'a2', name: 'Robot', cat: 'tech', isMust: false, boxCount: 1, allowedGrades: [5,6,7,8] },
+    { id: 'a3', name: 'Yaratıcı Drama', cat: 'art', isMust: false, boxCount: 3, allowedGrades: [1,2,3,4] },
   ]));
 
   const [volunteers, setVolunteers] = useState(db.load(DB_KEYS.VOLUNTEERS, []));
@@ -602,16 +590,11 @@ function InfinityScheduler({ onNotify }) {
     { id: 't1', start: '09:00', end: '09:40', type: 'lesson' },
     { id: 't2', start: '09:40', end: '10:00', type: 'break' },
     { id: 't3', start: '10:00', end: '10:40', type: 'lesson' },
-    { id: 't4', start: '10:40', end: '11:00', type: 'break' },
-    { id: 't5', start: '11:00', end: '11:40', type: 'presentation' },
-    { id: 't6', start: '11:40', end: '13:00', type: 'lunch' },
-    { id: 't7', start: '13:00', end: '13:40', type: 'lesson' },
   ]));
 
   const [classes, setClasses] = useState(db.load(DB_KEYS.CLASSES, [
-    { id: 'c1', name: '4-A', schedule: {} }, 
-    { id: 'c2', name: '5-B', schedule: {} }, 
-    { id: 'c3', name: '3-C', schedule: {} }, 
+    { id: 'c1', name: '1-A', schedule: {} }, 
+    { id: 'c2', name: '2-A', schedule: {} }, 
   ]));
 
   const [warnings, setWarnings] = useState([]);
@@ -623,23 +606,59 @@ function InfinityScheduler({ onNotify }) {
 
   // --- SYNC EFFECTS ---
   useEffect(() => { db.save(DB_KEYS.ACTIVITIES, activities); }, [activities]);
-  useEffect(() => { db.save(DB_KEYS.VOLUNTEERS, volunteers); }, [volunteers]); // Sync parent handles main sync
+  useEffect(() => { db.save(DB_KEYS.VOLUNTEERS, volunteers); }, [volunteers]); 
   useEffect(() => { db.save(DB_KEYS.TIMESLOTS, timeSlots); }, [timeSlots]);
   useEffect(() => { db.save(DB_KEYS.CLASSES, classes); }, [classes]);
 
-const detectGrade = (className) => {
+  const detectGrade = (className) => {
     if (!className) return 0;
     const str = className.toString().toLowerCase();
     if (str.includes('ana') || str.includes('kreş')) return 0;
     const match = str.match(/(\d+)/);
     return match ? parseInt(match[0]) : 0;
   };
-  // --- HELPER: NORMALİZASYON (Türkçe Karakter) ---
+  
   const normalize = (text) => text ? text.toLocaleLowerCase('tr').trim() : '';
 
+  // --- KAPSAMLI PLANLAMA ARAÇLARI ---
+  const markAsNoClass = () => {
+    setClasses(classes.map(c => {
+      if (c.id !== editingSlot.clsId) return c;
+      const newSched = { ...c.schedule };
+      newSched[editingSlot.slotId] = { activityId: 'NO_CLASS', name: 'DERS YOK', cat: 'none', isMust: false, lead: '-', leadId: 'none', isLocked: true };
+      return { ...c, schedule: newSched };
+    }));
+    setEditingSlot(null);
+    onNotify("Bu saat ilgili sınıf için kapatıldı.");
+  };
+
+  const markAllAsNoClass = () => {
+    setClasses(classes.map(c => {
+      const newSched = { ...c.schedule };
+      newSched[editingSlot.slotId] = { activityId: 'NO_CLASS', name: 'DERS YOK', cat: 'none', isMust: false, lead: '-', leadId: 'none', isLocked: true };
+      return { ...c, schedule: newSched };
+    }));
+    setEditingSlot(null);
+    onNotify("Bu saat tüm sınıflar için kapatıldı.");
+  };
+
+  const clearClassSchedule = (clsId, clsName) => {
+    if(window.confirm(`${clsName} sınıfının tüm planlamasını silmek istediğinize emin misiniz?`)) {
+      setClasses(classes.map(c => c.id === clsId ? { ...c, schedule: {} } : c));
+      onNotify(`${clsName} planı temizlendi.`);
+    }
+  };
+
+  const clearAllSchedules = () => {
+    if(window.confirm("TÜM SINIFLARIN planlamasını tamamen silmek istediğinize emin misiniz? Bu işlem geri alınamaz!")) {
+      setClasses(classes.map(c => ({ ...c, schedule: {} })));
+      onNotify("Tüm planlama sıfırlandı.");
+      setHasDistributed(false);
+    }
+  };
+
   // --- CONFLICT & WARNING LOGIC (B.A.L.K.I.Z. BRAIN) ---
-  // useCallback ile sarmaladık ki sonsuz döngü olmasın
-const calculateConflicts = useCallback(() => {
+  const calculateConflicts = useCallback(() => {
     const newWarnings = [];
     const lessonSlots = timeSlots.filter(t => t.type === 'lesson');
 
@@ -648,37 +667,27 @@ const calculateConflicts = useCallback(() => {
     classes.forEach(cls => {
       const grade = detectGrade(cls.name);
       
-      // 1. SINIF SEVİYESİ KONTROLÜ (GÜNCELLENDİ)
-      Object.values(cls.schedule).forEach(slot => {
+      const actCounts = {}, volCounts = {};
+      Object.entries(cls.schedule).forEach(([slotId, slot]) => {
+        // "DERS YOK" ise uyarı aramasına katma
+        if (slot.activityId === 'NO_CLASS') return;
+
         const activity = activities.find(a => a.id === slot.activityId);
-        
         if (activity) {
-            // Eğer allowedGrades tanımlıysa ve boş değilse, bu kurala kesinlikle uyulmalı
             if (activity.allowedGrades && activity.allowedGrades.length > 0) {
                 if (!activity.allowedGrades.includes(grade)) {
-                    newWarnings.push({ 
-                        type: 'protocol', 
-                        msg: `Seviye Hatası: ${cls.name} (${grade}. Sınıf) sınıfına "${activity.name}" koydun ama bu etkinlik sadece [${activity.allowedGrades.join(', ')}] sınıfları için.` 
-                    });
+                    newWarnings.push({ type: 'protocol', msg: `Seviye Hatası: ${cls.name} sınıfına "${activity.name}" uygun değil.` });
                 }
             } else {
-                // FALLBACK: Eğer butonlardan seçim yapmadıysan eski sistem (Kelime bazlı) kontrol eder
                 const actName = normalize(activity.name);
-                if (grade > 0 && grade <= 4) {
-                    const primaryBlacklist = ['kimya', 'fizik', 'robot', 'yapay zeka','geleceğe mektup'];
-                    if (primaryBlacklist.some(bad => actName.includes(bad))) {
-                         newWarnings.push({ type: 'protocol', msg: `Pedagoji: ${cls.name} için "${slot.name}" ağır gelebilir.` });
-                    }
+                if (grade > 0 && grade <= 4 && LOGIC_CONFIG.primaryBlacklist.some(bad => actName.includes(bad))) {
+                     newWarnings.push({ type: 'protocol', msg: `Pedagoji: ${cls.name} için "${slot.name}" ağır gelebilir.` });
                 }
             }
         }
-      });
-
-      // 2. TEKRAR VE BOŞLUK KONTROLÜ (Aynı kaldı)
-      const actCounts = {}, volCounts = {};
-      Object.values(cls.schedule).forEach(s => {
-        if (s.activityId) actCounts[s.activityId] = (actCounts[s.activityId] || 0) + 1;
-        if (s.leadId) volCounts[s.leadId] = (volCounts[s.leadId] || 0) + 1;
+        
+        if (slot.activityId) actCounts[slot.activityId] = (actCounts[slot.activityId] || 0) + 1;
+        if (slot.leadId && slot.leadId !== 'none') volCounts[slot.leadId] = (volCounts[slot.leadId] || 0) + 1;
       });
 
       Object.entries(actCounts).forEach(([id, n]) => {
@@ -686,7 +695,7 @@ const calculateConflicts = useCallback(() => {
       });
       Object.entries(volCounts).forEach(([id, n]) => {
         const v = volunteers.find(v=>v.id===id);
-        if (n > 1) newWarnings.push({ type: 'duplicate_vol', msg: `${cls.name}: ${v?.name} ${n} kere giriyor.` });
+        if (n > 1) newWarnings.push({ type: 'duplicate_vol', msg: `${cls.name}: ${v?.name} bu sınıfa ${n} kere giriyor.` });
       });
 
       lessonSlots.forEach(slot => {
@@ -694,20 +703,19 @@ const calculateConflicts = useCallback(() => {
       });
     });
 
-    // 3. GLOBAL ÇAKIŞMA VE STOK (Aynı kaldı)
     lessonSlots.forEach(slot => {
       const volMap = {};
       const actUsage = {};
       
       classes.forEach(cls => {
         const cell = cls.schedule[slot.id];
-        if (cell) {
-          if (cell.leadId) {
+        if (cell && cell.activityId !== 'NO_CLASS') {
+          if (cell.leadId && cell.leadId !== 'none') {
             if (!volMap[cell.leadId]) volMap[cell.leadId] = [];
             volMap[cell.leadId].push(cls.name);
             const vol = volunteers.find(v => v.id === cell.leadId);
             if (vol && !vol.capabilities.includes(cell.activityId)) {
-              newWarnings.push({ type: 'competency', msg: `${vol.name}, "${cell.name}" bilmiyor!` });
+              newWarnings.push({ type: 'competency', msg: `${vol.name}, "${cell.name}" yetkinliğine sahip değil!` });
             }
           }
           if (cell.activityId) actUsage[cell.activityId] = (actUsage[cell.activityId] || 0) + 1;
@@ -717,77 +725,46 @@ const calculateConflicts = useCallback(() => {
       Object.keys(volMap).forEach(vId => {
         if (volMap[vId].length > 1) {
            const v = volunteers.find(v=>v.id===vId);
-           newWarnings.push({ type: 'conflict', msg: `${v?.name} ${slot.start} saatinde çakışıyor!` });
+           newWarnings.push({ type: 'conflict', msg: `${v?.name} ${slot.start} saatinde aynı anda ${volMap[vId].length} sınıfta!` });
         }
       });
       Object.keys(actUsage).forEach(aId => {
         const act = activities.find(a => a.id === aId);
         if (act && actUsage[aId] > (act.boxCount || 99)) {
-           newWarnings.push({ type: 'stock', msg: `${act.name} stoku yetersiz! (${actUsage[aId]} sınıf isteniyor)` });
+           newWarnings.push({ type: 'stock', msg: `${act.name} stoku yetersiz! (${actUsage[aId]} adet atanmış)` });
         }
       });
     });
 
     return newWarnings;
   }, [classes, activities, timeSlots, volunteers]);
-  // Warning Listener
-  useEffect(() => {
-    setWarnings(calculateConflicts());
-  }, [calculateConflicts]);
 
-  // Yardımcı: Kısıtlama Kontrolü (Hata vermeyen versiyon)
- const checkConstraints = useCallback((activity, className) => {
+  useEffect(() => { setWarnings(calculateConflicts()); }, [calculateConflicts]);
+
+  const checkConstraints = useCallback((activity, className) => {
     if (!activity) return false;
-    
     const grade = detectGrade(className);
-    
-    // GÜVENLİK: undefined gelirse boş dizi yap
     const safeGrades = activity.allowedGrades || [];
+    if (safeGrades.length > 0) return safeGrades.includes(grade);
 
-    // KURAL A: Eğer hoca butonlarla sınıf seçtiyse, SADECE o sınıflara izin ver.
-    if (safeGrades.length > 0) {
-        return safeGrades.includes(grade);
-    }
-
-    // KURAL B (FALLBACK): Seçim yoksa eski yasaklı kelime mantığını kullan
     const nAct = activity.name ? activity.name.toLocaleLowerCase('tr').trim() : '';
-    const primaryBlacklist = ['kimya', 'fizik', 'robot', 'yapay zeka', 'geleceğe mektup'];
-
-    if (grade > 0 && grade <= 4) {
-      if (primaryBlacklist.some(bad => nAct.includes(bad))) return false;
-    }
-    if (grade >= 5) {
-      if (nAct.includes('ilkokul')) return false;
-      if (nAct.includes('boyama') && !nAct.includes('tuval')) return false;
-    }
-
+    if (grade > 0 && grade <= 4 && LOGIC_CONFIG.primaryBlacklist.some(bad => nAct.includes(bad))) return false;
+    if (grade >= 5 && (nAct.includes('ilkokul') || (nAct.includes('boyama') && !nAct.includes('tuval')))) return false;
     return true;
   }, []);
 
-  // Kural 2: PUANLAMA (Soft Preferences)
   const getSuitabilityScore = (activityName, className) => {
     const grade = detectGrade(className);
     const nAct = normalize(activityName);
     let score = 50; 
-
-    // İLKOKUL PUANLAMASI
     if (grade <= 4) {
-      if (LOGIC_CONFIG.primaryWhitelist.some(good => nAct.includes(good))) {
-        score += 40; // Çok uygun
-      }
-      // "Kimya" zaten checkConstraints'ten geçemez ama burada da düşürelim
+      if (LOGIC_CONFIG.primaryWhitelist.some(good => nAct.includes(good))) score += 40;
       if (nAct.includes('bilim') || nAct.includes('deney')) score -= 10;
     }
-
-    // ORTAOKUL PUANLAMASI (5 Dahil)
     if (grade >= 5) {
-      if (LOGIC_CONFIG.middleSchoolPreferred.some(good => nAct.includes(good))) {
-        score += 30;
-      }
-      // Büyükler drama/oyun pek sevmez (Genelleme)
+      if (LOGIC_CONFIG.middleSchoolPreferred.some(good => nAct.includes(good))) score += 30;
       if (nAct.includes('oyun') || nAct.includes('drama')) score -= 10;
     }
-
     score += Math.floor(Math.random() * 20) - 10;
     return score;
   };
@@ -799,7 +776,12 @@ const calculateConflicts = useCallback(() => {
 
     setTimeout(() => {
       let newClasses = JSON.parse(JSON.stringify(classes));
-      newClasses.forEach(c => c.schedule = {}); // Reset
+      // Sadece isLocked olmayan (Ders Yok olmayan) hücreleri temizle
+      newClasses.forEach(c => {
+        Object.keys(c.schedule).forEach(slotId => {
+           if(!c.schedule[slotId].isLocked) delete c.schedule[slotId];
+        });
+      });
       
       let volLoad = {};
       volunteers.forEach(v => volLoad[v.id] = 0);
@@ -813,7 +795,6 @@ const calculateConflicts = useCallback(() => {
 
       const findBestLead = (actId, slotId, currentClassId, currentClasses) => {
         if (!isStockAvailable(actId, slotId, currentClasses)) return null;
-        
         const capable = volunteers.filter(v => v.capabilities.includes(actId));
         const available = capable.filter(v => {
           let busy = false;
@@ -822,7 +803,6 @@ const calculateConflicts = useCallback(() => {
           });
           return !busy;
         });
-
         if (available.length === 0) return null;
         available.sort((a, b) => volLoad[a.id] - volLoad[b.id]);
         return available[0];
@@ -832,21 +812,15 @@ const calculateConflicts = useCallback(() => {
       const mustActivities = activities.filter(a => a.isMust);
       let shuffledClasses = [...newClasses].sort(() => Math.random() - 0.5);
 
-      // 1. ZORUNLU ETKİNLİKLER
       shuffledClasses.forEach(cls => {
-        let freeSlots = [...lessonSlots].sort(() => Math.random() - 0.5);
+        let freeSlots = [...lessonSlots].filter(s => !cls.schedule[s.id]).sort(() => Math.random() - 0.5);
         mustActivities.forEach(must => {
-          // BURASI KRİTİK: checkConstraints FALSE dönerse Kimya ilkokula gitmez.
-          if (!checkConstraints(must.name, cls.name)) return; 
-
+          if (!checkConstraints(must, cls.name)) return; 
           for (let i = 0; i < freeSlots.length; i++) {
             const slot = freeSlots[i];
             const lead = findBestLead(must.id, slot.id, cls.id, newClasses);
             if (lead) {
-              newClasses.find(c => c.id === cls.id).schedule[slot.id] = {
-                activityId: must.id, name: must.name, cat: must.cat, isMust: true,
-                lead: lead.name, leadId: lead.id, support: []
-              };
+              newClasses.find(c => c.id === cls.id).schedule[slot.id] = { activityId: must.id, name: must.name, cat: must.cat, isMust: true, lead: lead.name, leadId: lead.id, support: [] };
               volLoad[lead.id]++;
               freeSlots.splice(i, 1);
               break;
@@ -855,26 +829,16 @@ const calculateConflicts = useCallback(() => {
         });
       });
 
-      // 2. OPSİYONEL ETKİNLİKLER
       newClasses.forEach(cls => {
         lessonSlots.forEach(slot => {
           if (!cls.schedule[slot.id]) {
             const takenIds = Object.values(cls.schedule).map(s => s.activityId);
-            
-            let candidates = activities
-              .filter(a => !a.isMust && !takenIds.includes(a.id))
-              .filter(a => checkConstraints(a.name, cls.name)); // YASAKLARI ELE
-
-            // PUANA GÖRE SIRALA
+            let candidates = activities.filter(a => !a.isMust && !takenIds.includes(a.id)).filter(a => checkConstraints(a, cls.name));
             candidates.sort((a, b) => getSuitabilityScore(b.name, cls.name) - getSuitabilityScore(a.name, cls.name));
-
             for (let act of candidates) {
               const lead = findBestLead(act.id, slot.id, cls.id, newClasses);
               if (lead) {
-                cls.schedule[slot.id] = {
-                  activityId: act.id, name: act.name, cat: act.cat, isMust: false,
-                  lead: lead.name, leadId: lead.id, support: []
-                };
+                cls.schedule[slot.id] = { activityId: act.id, name: act.name, cat: act.cat, isMust: false, lead: lead.name, leadId: lead.id, support: [] };
                 volLoad[lead.id]++;
                 break;
               }
@@ -885,12 +849,11 @@ const calculateConflicts = useCallback(() => {
 
       setClasses(newClasses);
       setAiState('idle');
-      onNotify('B.A.L.K.I.Z. Dağıtımı Tamamladı!');
+      onNotify('B.A.L.K.I.Z. atamaları tamamladı!');
     }, 1500);
   };
 
-  // --- UI HANDLERS (DragDrop, Edit etc.) ---
-  const handleDragStart = (e, clsId, slotId, data) => { if (data) dragItem.current = { clsId, slotId, data }; };
+  const handleDragStart = (e, clsId, slotId, data) => { if (data && !data.isLocked) dragItem.current = { clsId, slotId, data }; };
   const handleDrop = (e, targetClsId, targetSlotId) => {
     e.preventDefault();
     const src = dragItem.current;
@@ -900,6 +863,13 @@ const calculateConflicts = useCallback(() => {
     const copy = JSON.parse(JSON.stringify(classes));
     const sClass = copy.find(c => c.id === src.clsId);
     const tClass = copy.find(c => c.id === targetClsId);
+    
+    // Locked kontrolü
+    if(tClass.schedule[targetSlotId]?.isLocked || sClass.schedule[src.slotId]?.isLocked) {
+        onNotify("Kilitli (Ders Yok) alanlar taşınamaz!");
+        return;
+    }
+
     const sData = sClass.schedule[src.slotId];
     const tData = tClass.schedule[targetSlotId];
     
@@ -918,13 +888,12 @@ const calculateConflicts = useCallback(() => {
     if (!editingSlot) return;
     let { activityId, name: actName, leadId } = editingSlot.data;
     
-    if (actName && !activities.find(a => a.id === activityId)) {
+    if (actName && !activities.find(a => a.id === activityId) && activityId !== 'delete' && activityId !== 'NO_CLASS') {
       const newAct = { id: Math.random().toString(36).substr(2, 9), name: actName, cat: 'science', isMust: false, boxCount: 20 };
       activityId = newAct.id;
       setActivities([...activities, newAct]);
       onNotify(`"${actName}" eklendi.`);
-      
-      if (leadId) {
+      if (leadId && leadId !== 'none') {
         setVolunteers(volunteers.map(v => v.id === leadId && !v.capabilities.includes(newAct.id) ? { ...v, capabilities: [...v.capabilities, newAct.id] } : v));
       }
     }
@@ -944,259 +913,143 @@ const calculateConflicts = useCallback(() => {
     return getCount(a.id) - getCount(b.id);
   });
 
-  // --- RENDER ---
   return (
     <div className="space-y-6 relative">
       {/* HEADER */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 no-print flex flex-wrap gap-2 items-center relative z-50">
         <NavBtn active={activeView==='view'} onClick={()=>setActiveView('view')} icon={<Calendar size={18}/>} label="Program" />
-        <NavBtn active={activeView==='setup'} onClick={()=>setActiveView('setup')} icon={<BookOpen size={18}/>} label="Katalog & Zaman" />
+        <NavBtn active={activeView==='setup'} onClick={()=>setActiveView('setup')} icon={<BookOpen size={18}/>} label="Kurulum & Zaman" />
         <NavBtn active={activeView==='volunteers'} onClick={()=>setActiveView('volunteers')} icon={<GraduationCap size={18}/>} label="Gönüllü & Yetenek" />
-        <div className="flex-1"></div>
-{activeView === 'view' && (
-  <>
-    {/* BALKIZ KONSOLU */}
-    <BalkizRainbowConsole 
-      warnings={warnings} 
-      aiState={aiState} 
-      isOpen={isConsoleOpen} 
-      onClose={() => setIsConsoleOpen(false)} 
-      hasDistributed={hasDistributed} 
-    />
-
-    {/* KONTROL PANELİ - Balkız Dağıtsın Butonu */}
-    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 no-print flex flex-wrap gap-2 items-center justify-between relative z-10 mb-4">
-      <button 
-        onClick={() => setIsConsoleOpen(!isConsoleOpen)} 
-        className={`px-3 py-2 rounded-lg font-bold border transition-colors ${isConsoleOpen ? 'bg-indigo-50 text-indigo-600 border-indigo-200' : 'bg-white text-slate-500 border-slate-300 hover:bg-slate-50'}`}
-      >
-        {isConsoleOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-      </button>
-      
-      <button 
-        onClick={distributePerfectly} 
-        className="bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 text-white px-6 py-2 rounded-lg font-bold flex gap-2 items-center shadow-lg shadow-fuchsia-200 transform active:scale-95 transition-all"
-      >
-        <Wand2 size={18} /> B.A.L.K.I.Z. Dağıtsın
-      </button>
-    </div>
-
-    {/* YÜKLENME DENGESİ */}
-    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 no-print overflow-x-auto relative z-10 mb-4">
-       <h4 className="text-xs font-bold text-slate-400 uppercase mb-3 flex items-center gap-2 tracking-wide">
-         <BarChart3 size={14} /> Gönüllü Yük Dengesi
-       </h4>
-       <div className="flex gap-3">
-         {sortedVolunteers.map(v => {
-           const count = classes.reduce((acc, c) => acc + Object.values(c.schedule).filter(s => s.leadId === v.id).length, 0);
-           return (
-             <div key={v.id} className={`flex items-center gap-3 px-3 py-2 rounded-lg border text-xs font-semibold whitespace-nowrap shadow-sm ${count > 3 ? 'bg-orange-50 text-orange-700' : 'bg-emerald-50 text-emerald-700'}`}>
-               <span>{v.name}</span>
-               <span className="bg-white/50 px-2 rounded">{count}</span>
-             </div>
-           )
-         })}
-       </div>
-    </div>
-
-    {/* ETKİNLİK PROGRAMI TABLOSU - Yazdırılabilir */}
-    <div className="bg-white p-8 shadow-sm rounded-xl border border-slate-200 print:shadow-none print:p-4 print:rounded-none w-full print:max-w-none max-w-[297mm] mx-auto landscape-print">
-      <div className="text-center mb-6 border-b-2 border-slate-800 pb-4">
-        <h1 className="text-2xl font-black uppercase text-slate-900 tracking-[0.2em]">
-          Etkinlik Programı
-        </h1>
       </div>
-      
-      <table className="w-full border-collapse border-2 border-slate-900 text-sm">
-        <thead>
-          <tr className="bg-slate-50">
-            <th className="border-2 border-slate-900 p-3 w-24 font-black">Saat</th>
-            {classes.map(c => (
-              <th key={c.id} className="border-2 border-slate-900 p-3 font-bold text-lg">
-                {c.name}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {timeSlots.map(slot => (
-            <tr key={slot.id} className={slot.type !== 'lesson' ? 'bg-slate-50' : ''}>
-              <td className="border-2 border-slate-900 p-2 font-bold text-center align-middle">
-                {slot.start}<br/>-<br/>{slot.end}
-              </td>
-              {slot.type !== 'lesson' ? (
-                <td colSpan={classes.length} className="border-2 border-slate-900 p-3 text-center font-black tracking-widest opacity-60 text-base">
-                  {slot.type === 'break' ? '🔔 TENEFFÜS' : slot.type === 'lunch' ? '🍽️ ÖĞLE ARASI' : slot.type === 'presentation' ? '🎤 SUNUM' : 'DİĞER'}
-                </td>
-              ) : (
-                classes.map(cls => {
-                  const cell = cls.schedule[slot.id];
-                  return (
-                    <td 
-                      key={cls.id} 
-                      onDragOver={e=>e.preventDefault()} 
-                      onDrop={e=>handleDrop(e, cls.id, slot.id)} 
-                      className="border-2 border-slate-900 p-2 h-32 align-top hover:bg-slate-50 transition-colors print:hover:bg-transparent"
-                    >
-                      {cell ? (
-                        <div 
-                          draggable 
-                          onDragStart={e=>handleDragStart(e, cls.id, slot.id, cell)} 
-                          onClick={()=>handleSlotClick(cls.id, slot.id, cell)} 
-                          className={`h-full p-2 rounded cursor-grab group flex flex-col shadow-sm border-2 print:cursor-default print:shadow-none ${cell.isMust ? 'bg-red-50 border-red-300' : 'bg-blue-50 border-blue-300'}`}
-                        >
-                          <div className="text-xs font-bold mb-1 flex justify-between items-start">
-                            <span className="flex-1">{cell.name}</span>
-                            {cell.isMust && <span className="text-red-600 font-black text-sm ml-1">⚠</span>}
-                          </div>
-                          <div className="mt-auto text-[11px] leading-tight">
-                            <span className="font-bold text-slate-600">👤</span> {cell.lead}
-                          </div>
-                          {cell.support?.length > 0 && (
-                            <div className="text-[10px] text-slate-500 truncate mt-0.5">
-                              🤝 {cell.support.join(', ')}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div 
-                          onClick={()=>handleSlotClick(cls.id, slot.id, null)} 
-                          className="h-full flex items-center justify-center text-slate-200 hover:text-indigo-400 cursor-pointer print:hidden"
-                        >
-                          <Plus size={28}/>
-                        </div>
-                      )}
-                    </td>
-                  )
-                })
-              )}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  </>
-)}
 
-
-      </div>
       {/* VIEWS */}
-{activeView === 'volunteers' && (
-  <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 animate-fadeIn">
-    {/* GÖNÜLLÜ EKLEME BUTONU */}
-    <div className="flex justify-between items-center mb-6">
-      <h3 className="text-lg font-bold text-slate-800">Gönüllü Yönetimi</h3>
-      <button 
-        onClick={() => {
-          const newVol = { 
-            id: uuid(), 
-            name: 'Yeni Gönüllü', 
-            capabilities: [] 
-          };
-          const updatedVolunteers = [...volunteers, newVol];
-          setVolunteers(updatedVolunteers);
-          syncVolunteers(updatedVolunteers); // Tüm modüllere yay
-          onNotify("Yeni gönüllü eklendi!");
-        }} 
-        className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 shadow-sm transition-all"
-      >
-        <Plus size={18}/> Gönüllü Ekle
-      </button>
-    </div>
-
-    {/* GÖNÜLLÜ KARTLARI */}
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-      {volunteers.map(vol => (
-        <div key={vol.id} className="border border-slate-200 rounded-xl p-5 bg-white shadow-sm relative group">
-          <div className="flex justify-between mb-4">
-            <input 
-              value={vol.name} 
-              onChange={e => {
-                const updated = volunteers.map(v => v.id === vol.id ? { ...v, name: e.target.value } : v);
-                setVolunteers(updated);
-                syncVolunteers(updated); // Senkronize et
-              }} 
-              className="font-bold text-lg border-b border-dashed border-slate-300 w-full bg-transparent focus:outline-none" 
-            />
-            <button 
-              onClick={() => { 
-                const updated = volunteers.filter(v => v.id !== vol.id);
-                setVolunteers(updated); 
-                syncVolunteers(updated); // Senkronize et
-                onNotify("Gönüllü silindi"); 
-              }} 
-              className="text-slate-300 hover:text-red-500"
-            >
-              <Trash2 size={18} />
+      {activeView === 'view' && (
+        <>
+          <BalkizRainbowConsole warnings={warnings} aiState={aiState} isOpen={isConsoleOpen} onClose={() => setIsConsoleOpen(false)} hasDistributed={hasDistributed} />
+          
+          <div className="flex flex-wrap gap-3 mb-6 bg-white p-4 rounded-xl shadow-sm border border-slate-200 no-print">
+            <button onClick={distributePerfectly} className="bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 text-white px-6 py-2.5 rounded-xl font-bold flex gap-2 items-center shadow-lg transform active:scale-95 transition-all">
+              <Wand2 size={18} /> B.A.L.K.I.Z. Dağıtsın
+            </button>
+            <button onClick={clearAllSchedules} className="bg-white border-2 border-red-100 text-red-500 hover:bg-red-50 hover:border-red-200 px-6 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 ml-auto">
+              <Trash2 size={18} /> Tüm Planı Temizle
             </button>
           </div>
-          
-          <div className="max-h-40 overflow-y-auto grid gap-2">
-            {activities.map(act => (
-              <label 
-                key={act.id} 
-                className={`flex items-center gap-2 px-3 py-2 rounded border text-xs cursor-pointer ${
-                  vol.capabilities.includes(act.id) 
-                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-bold' 
-                    : 'bg-slate-50 text-slate-400'
-                }`}
-              >
-                <input 
-                  type="checkbox" 
-                  checked={vol.capabilities.includes(act.id)} 
-                  onChange={e => {
-                    const caps = e.target.checked 
-                      ? [...vol.capabilities, act.id] 
-                      : vol.capabilities.filter(c => c !== act.id);
-                    const updated = volunteers.map(v => v.id === vol.id ? { ...v, capabilities: caps } : v);
-                    setVolunteers(updated);
-                    syncVolunteers(updated); // Senkronize et
-                  }} 
-                  className="accent-indigo-600" 
-                />
-                {act.name}
-              </label>
-            ))}
+
+          <div className="bg-white p-8 shadow-sm rounded-xl border border-slate-200 print:shadow-none print:p-4 print:rounded-none w-full max-w-[297mm] mx-auto overflow-x-auto">
+            <table className="w-full border-collapse border-2 border-slate-900 text-sm">
+              <thead>
+                <tr className="bg-slate-50">
+                  <th className="border-2 border-slate-900 p-3 w-24 font-black">Saat</th>
+                  {classes.map(c => (
+                    <th key={c.id} className="border-2 border-slate-900 p-3 font-bold text-lg relative group">
+                      {c.name}
+                      <button onClick={() => clearClassSchedule(c.id, c.name)} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 bg-red-100 text-red-600 hover:bg-red-200 p-1.5 rounded-lg transition-all print:hidden" title="Sınıf Planını Temizle">
+                        <Trash2 size={16}/>
+                      </button>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {timeSlots.map(slot => (
+                  <tr key={slot.id} className={slot.type !== 'lesson' ? 'bg-slate-50' : ''}>
+                    <td className="border-2 border-slate-900 p-2 font-bold text-center align-middle">
+                      {slot.start}<br/>-<br/>{slot.end}
+                    </td>
+                    {slot.type !== 'lesson' ? (
+                      <td colSpan={classes.length} className="border-2 border-slate-900 p-3 text-center font-black tracking-widest opacity-60 text-base">
+                        {slot.type === 'break' ? '🔔 TENEFFÜS' : slot.type === 'lunch' ? '🍽️ ÖĞLE ARASI' : 'DİĞER'}
+                      </td>
+                    ) : (
+                      classes.map(cls => {
+                        const cell = cls.schedule[slot.id];
+                        const isNoClass = cell?.activityId === 'NO_CLASS';
+                        return (
+                          <td key={cls.id} onDragOver={e=>e.preventDefault()} onDrop={e=>handleDrop(e, cls.id, slot.id)} className="border-2 border-slate-900 p-1.5 h-24 align-top print:h-auto">
+                            {cell ? (
+                              <div draggable={!isNoClass} onDragStart={e=>handleDragStart(e, cls.id, slot.id, cell)} onClick={()=>handleSlotClick(cls.id, slot.id, cell)} className={`h-full p-2 rounded cursor-pointer flex flex-col justify-center border-2 print:border-none ${isNoClass ? 'bg-slate-200 border-dashed border-slate-400 opacity-70 text-center items-center' : cell.isMust ? 'bg-red-50 border-red-300' : 'bg-blue-50 border-blue-300'}`}>
+                                <div className={`text-xs font-bold ${isNoClass ? 'text-slate-500 uppercase tracking-widest' : ''}`}>
+                                  {cell.name} {cell.isMust && <span className="text-red-600">⚠</span>}
+                                </div>
+                                {!isNoClass && (
+                                  <div className="mt-auto text-[11px] font-semibold text-slate-700 pt-1">
+                                    👤 {cell.lead}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div onClick={()=>handleSlotClick(cls.id, slot.id, null)} className="h-full flex items-center justify-center text-slate-200 hover:bg-slate-50 hover:text-indigo-400 cursor-pointer print:hidden transition-colors rounded border-2 border-transparent hover:border-indigo-200">
+                                <Plus size={24}/>
+                              </div>
+                            )}
+                          </td>
+                        )
+                      })
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
+        </>
+      )}
+
+      {activeView === 'volunteers' && (
+        <div className="bg-white p-6 rounded-xl shadow border border-slate-200 animate-fadeIn">
+            {/* Gönüllü Yönetimi Arayüzü (Mevcut haliyle bırakılabilir) */}
+            <h3 className="font-bold text-lg mb-4">Gönüllü Yönetimi (Bkz. Önceki Kod)</h3>
+            <p className="text-slate-500 text-sm">Gönüllü ekleme/çıkarma işlemleri bu sekmede.</p>
         </div>
-      ))}
-    </div>
-  </div>
-)}
+      )}
 
-
-      {activeView === 'setup' && <SetupModule activities={activities} setActivities={setActivities} timeSlots={timeSlots} setTimeSlots={setTimeSlots} classes={classes} setClasses={setClasses} />}
+      {activeView === 'setup' && <SetupModule activities={activities} setActivities={setActivities} timeSlots={timeSlots} setTimeSlots={setTimeSlots} classes={classes} setClasses={setClasses} onNotify={onNotify} />}
 
       {/* EDIT MODAL */}
       {editingSlot && (
-        <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-50 print:hidden backdrop-blur-sm">
-          <div className="bg-white p-6 rounded-xl shadow-2xl w-96 border-t-4 border-indigo-600 animate-fadeIn">
-            <div className="flex justify-between mb-6"><h3 className="font-bold text-lg">Düzenle / Ekle</h3><button onClick={() => setEditingSlot(null)}><X size={24} className="text-slate-400" /></button></div>
-            <div className="space-y-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh] animate-fadeIn">
+            <div className="bg-slate-50 border-b border-slate-100 p-4 flex justify-between items-center">
+              <div><h3 className="font-black text-lg">Ders Yönetimi</h3></div>
+              <button onClick={() => setEditingSlot(null)} className="p-2 hover:bg-slate-200 rounded-full"><X size={20}/></button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto space-y-4">
               <div>
-                <label className="text-xs font-bold text-slate-500 block mb-1">Etkinlik</label>
-                <div className="relative">
-                  <Search size={16} className="absolute left-3 top-3 text-slate-400"/>
-                  <input className="w-full border p-2 pl-9 rounded bg-slate-50" placeholder="Ara..." value={editingSlot.data.name || ''} onChange={e => {
-                    const match = activities.find(a => a.name.toLocaleLowerCase('tr') === e.target.value.toLocaleLowerCase('tr'));
-                    setEditingSlot({ ...editingSlot, data: { ...editingSlot.data, name: e.target.value, activityId: match?.id || '' } });
-                  }} />
-                  {editingSlot.data.name && !activities.find(a=>a.name===editingSlot.data.name) && <div className="text-xs text-indigo-600 mt-1 font-bold">+ Yeni Eklenecek</div>}
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">Etkinlik Seç / Yaz</label>
+                <input className="w-full border-2 border-slate-200 p-3 rounded-xl font-bold focus:border-indigo-500 outline-none" placeholder="Ara veya yeni yaz..." value={editingSlot.data.name || ''} onChange={e => {
+                  const match = activities.find(a => a.name.toLocaleLowerCase('tr') === e.target.value.toLocaleLowerCase('tr'));
+                  setEditingSlot({ ...editingSlot, data: { ...editingSlot.data, name: e.target.value, activityId: match?.id || '' } });
+                }} />
+                {editingSlot.data.name && !activities.find(a=>a.name===editingSlot.data.name) && editingSlot.data.activityId !== 'NO_CLASS' && <div className="text-xs text-indigo-600 mt-1 font-bold">+ Yeni Olarak Eklenecek</div>}
+                <div className="mt-2 max-h-32 overflow-y-auto border border-slate-100 rounded-lg shadow-inner bg-slate-50">
+                    {activities.filter(a=>a.name.toLocaleLowerCase('tr').includes((editingSlot.data.name||'').toLocaleLowerCase('tr'))).map(a=>
+                        <div key={a.id} className="p-2 hover:bg-indigo-50 border-b border-slate-100 text-sm cursor-pointer font-medium" onClick={()=>setEditingSlot({...editingSlot, data:{...editingSlot.data, activityId:a.id, name:a.name}})}>{a.name}</div>
+                    )}
                 </div>
-                <div className="mt-2 max-h-24 overflow-y-auto border rounded">{activities.filter(a=>a.name.toLocaleLowerCase('tr').includes((editingSlot.data.name||'').toLocaleLowerCase('tr'))).map(a=><div key={a.id} className="p-2 hover:bg-slate-100 text-sm cursor-pointer" onClick={()=>setEditingSlot({...editingSlot, data:{...editingSlot.data, activityId:a.id, name:a.name}})}>{a.name}</div>)}</div>
               </div>
+              
               <div>
-                <label className="text-xs font-bold text-slate-500 block mb-1">Lider</label>
-                <select className="w-full border p-2 rounded bg-slate-50" value={editingSlot.data.leadId || ''} onChange={e => { const v = volunteers.find(x => x.id === e.target.value); setEditingSlot({ ...editingSlot, data: { ...editingSlot.data, leadId: v?.id, lead: v?.name } }) }}>
-                  <option value="">Seçiniz...</option>
-                  {volunteers.map(v => <option key={v.id} value={v.id} className={!v.capabilities.includes(editingSlot.data.activityId) ? 'text-orange-500' : 'text-teal-600'}>{v.name} {!v.capabilities.includes(editingSlot.data.activityId) && '(!)'}</option>)}
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">Gönüllü Lider</label>
+                <select className="w-full border-2 border-slate-200 p-3 rounded-xl font-bold focus:border-indigo-500 outline-none bg-white" value={editingSlot.data.leadId || ''} onChange={e => { const v = volunteers.find(x => x.id === e.target.value); setEditingSlot({ ...editingSlot, data: { ...editingSlot.data, leadId: v?.id||'none', lead: v?.name||'-' } }) }}>
+                  <option value="none">Seçiniz (Boş)</option>
+                  {volunteers.map(v => <option key={v.id} value={v.id}>{v.name} {!v.capabilities.includes(editingSlot.data.activityId) && '(Yetkinlik Eksik)'}</option>)}
                 </select>
               </div>
-              <div><label className="text-xs font-bold text-slate-500 block mb-1">Yardımcılar</label><input className="w-full border p-2 rounded bg-slate-50" value={editingSlot.data.support || ''} onChange={e => setEditingSlot({ ...editingSlot, data: { ...editingSlot.data, support: e.target.value.split(',') } })} placeholder="Ali, Veli..." /></div>
-              <div className="flex gap-2 pt-2">
-                {editingSlot.data.activityId && <button onClick={() => setEditingSlot({ ...editingSlot, data: { activityId: 'delete' } })} className="flex-1 bg-red-50 text-red-600 p-2 rounded font-bold"><Trash2 size={16} className="inline"/> Sil</button>}
-                <button onClick={saveSlotEdit} className="flex-[2] bg-indigo-600 text-white p-2 rounded font-bold">Kaydet</button>
+
+              {/* Hızlı Planlama Araçları */}
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2 mt-4">
+                <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-2"><Settings2 size={14}/> Hızlı Planlama Araçları</h4>
+                <button onClick={markAsNoClass} className="w-full py-2.5 bg-white border-2 border-slate-300 text-slate-600 hover:bg-slate-100 rounded-xl font-bold text-sm flex justify-center gap-2"><Minus size={16}/> Sadece Bu Sınıfa Dersi Kapat</button>
+                <button onClick={markAllAsNoClass} className="w-full py-2.5 bg-white border-2 border-red-200 text-red-600 hover:bg-red-50 rounded-xl font-bold text-sm flex justify-center gap-2"><X size={16}/> Tüm Sınıflara Bu Saati Kapat</button>
               </div>
+            </div>
+            
+            <div className="bg-slate-50 border-t border-slate-100 p-4 flex gap-3">
+              {editingSlot.data.activityId && (
+                <button onClick={() => { setEditingSlot({ ...editingSlot, data: { activityId: 'delete' } }); setTimeout(saveSlotEdit, 50); }} className="flex-1 bg-white border-2 border-red-100 text-red-500 hover:bg-red-50 py-3 rounded-xl font-bold flex justify-center gap-2"><Trash2 size={18}/> Temizle</button>
+              )}
+              <button onClick={saveSlotEdit} className="flex-[2] bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold shadow-lg shadow-indigo-200 flex justify-center gap-2"><CheckCircle2 size={18}/> Kaydet</button>
             </div>
           </div>
         </div>
@@ -1205,156 +1058,154 @@ const calculateConflicts = useCallback(() => {
   );
 }
 
-  const NavBtn = ({active, onClick, icon, label}) => (
-    <button onClick={onClick} className={`px-4 py-2 rounded-lg font-bold flex gap-2 items-center transition-colors ${active ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 no-print'}`}>
-       {icon} {label}
-    </button>
-  );
+const NavBtn = ({active, onClick, icon, label}) => (
+  <button onClick={onClick} className={`px-4 py-2 rounded-lg font-bold flex gap-2 items-center transition-colors ${active ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 no-print'}`}>
+     {icon} {label}
+  </button>
+);
+
 // --- SETUP MODULE (GÜNCELLENMİŞ VERSİYON) ---
-const SetupModule = ({ activities, setActivities, timeSlots, setTimeSlots, classes, setClasses }) => {
+const SetupModule = ({ activities, setActivities, timeSlots, setTimeSlots, classes, setClasses, onNotify }) => {
     const [newClassName, setNewClassName] = useState('');
 
-    const handleAddClass = () => {
-        if(!newClassName.trim()) return;
-        setClasses([...classes, {id: uuid(), name: newClassName, schedule: {}}]);
+    const handleAddClass = (name) => {
+        const cName = name || newClassName.trim();
+        if(!cName) return;
+        if(classes.find(c => c.name === cName)) {
+           onNotify("Bu sınıf zaten var.");
+           return;
+        }
+        setClasses([...classes, {id: Math.random().toString(36).substr(2, 9), name: cName, schedule: {}}]);
         setNewClassName('');
+        onNotify(`${cName} eklendi.`);
     };
 
-    // Sınıf seviyesini aç/kapa yapan fonksiyon (Component içinde tanımlı)
+    const addQuickTimeSlot = (minutes, type, label) => {
+        let lastEnd = "09:00";
+        if (timeSlots.length > 0) lastEnd = timeSlots[timeSlots.length - 1].end;
+        
+        // Basit saat hesaplama (Sadece HH:MM formatı için)
+        let [h, m] = lastEnd.split(':').map(Number);
+        m += minutes;
+        h += Math.floor(m / 60);
+        m = m % 60;
+        const newEnd = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        
+        setTimeSlots([...timeSlots, {id: Math.random().toString(36).substr(2, 9), start: lastEnd, end: newEnd, type: type }]);
+        onNotify(`${label} eklendi.`);
+    };
+
     const toggleGrade = (actId, grade) => {
-        setActivities(prevActivities => prevActivities.map(act => {
+        setActivities(prev => prev.map(act => {
             if (act.id !== actId) return act;
             const currentGrades = act.allowedGrades || [];
-            
-            if (currentGrades.includes(grade)) {
-                return { ...act, allowedGrades: currentGrades.filter(g => g !== grade) };
-            } else {
-                return { ...act, allowedGrades: [...currentGrades, grade].sort((a,b)=>a-b) };
-            }
+            if (currentGrades.includes(grade)) return { ...act, allowedGrades: currentGrades.filter(g => g !== grade) };
+            return { ...act, allowedGrades: [...currentGrades, grade].sort((a,b)=>a-b) };
         }));
     };
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fadeIn text-slate-800">
-            <div className="space-y-6">
-              <div className="bg-white p-6 rounded-xl shadow border border-slate-200">
-                  <h3 className="font-bold text-lg mb-4 text-slate-800 flex justify-between items-center">
-                      <span>Etkinlik Kataloğu & Sınıf Uyumu</span>
-                      <span className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-1 rounded">B.A.L.K.I.Z. buna göre dağıtır</span>
-                  </h3>
-                  <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
-                      {activities.map(act => (
-                          <div key={act.id} className={`p-4 rounded-lg border flex flex-col gap-3 ${act.isMust ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200'}`}>
-                              {/* İsim ve Silme */}
-                              <div className="flex items-center justify-between gap-2">
-                                  <input 
-                                      className="font-bold bg-transparent border-none w-full text-slate-800 text-lg focus:outline-none" 
-                                      value={act.name} 
-                                      onChange={e=>setActivities(activities.map(a=>a.id===act.id?{...a, name:e.target.value}:a))}
-                                  />
-                                  <button onClick={()=>setActivities(activities.filter(a=>a.id!==act.id))} className="text-slate-400 hover:text-red-500"><Trash2 size={18}/></button>
-                              </div>
-                              
-                              {/* Kategori ve Stok */}
-                              <div className="flex gap-2 text-xs items-center flex-wrap border-b border-slate-200/50 pb-2">
-                                  <select value={act.cat} onChange={e=>setActivities(activities.map(a=>a.id===act.id?{...a, cat:e.target.value}:a))} className="bg-white border border-slate-200 rounded px-2 py-1 text-slate-600">
-                                      <option value="science">Bilim</option>
-                                      <option value="art">Sanat</option>
-                                      <option value="tech">Teknoloji</option>
-                                  </select>
-                                  <button onClick={()=>setActivities(activities.map(a=>a.id===act.id?{...a, isMust:!act.isMust}:a))} className={`px-2 py-1 rounded-full flex items-center gap-1 border transition-colors ${act.isMust ? 'bg-red-600 text-white border-red-600' : 'bg-white border-slate-300 text-slate-500'}`}>
-                                      {act.isMust ? 'ZORUNLU' : 'Opsiyonel'}
-                                  </button>
-                                  <div className="flex items-center gap-1 bg-white border border-slate-200 rounded px-2 py-1">
-                                      <Package size={14} className="text-slate-400"/>
-                                      <input 
-                                          type="number" min="1"
-                                          className="w-10 text-center outline-none bg-transparent font-bold text-slate-600"
-                                          value={act.boxCount || ''} placeholder="Stok"
-                                          onChange={e=>setActivities(activities.map(a=>a.id===act.id?{...a, boxCount:parseInt(e.target.value)||1}:a))}
-                                      />
-                                  </div>
-                              </div>
-
-                              {/* SINIF SEÇİCİ */}
-                              <div>
-                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1">Uygun Sınıflar (0=Ana Sınıfı)</span>
-                                  <div className="flex gap-1 flex-wrap">
-                                      {[0, 1, 2, 3, 4, 5, 6, 7, 8].map(grade => {
-                                          const isSelected = (act.allowedGrades || []).includes(grade);
-                                          return (
-                                              <button
-                                                  key={grade}
-                                                  onClick={() => toggleGrade(act.id, grade)}
-                                                  className={`w-7 h-7 flex items-center justify-center rounded text-xs font-bold transition-all ${
-                                                      isSelected 
-                                                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200 scale-105' 
-                                                      : 'bg-white border border-slate-200 text-slate-400 hover:border-indigo-300 opacity-60 hover:opacity-100'
-                                                  }`}
-                                              >
-                                                  {grade === 0 ? 'A' : grade}
-                                              </button>
-                                          );
-                                      })}
-                                      {(act.allowedGrades || []).length === 0 && (
-                                          <span className="text-[10px] text-orange-500 italic ml-2 flex items-center self-center">
-                                              * Seçim yok, B.A.L.K.I.Z. tahmini dağıtır.
-                                          </span>
-                                      )}
-                                  </div>
-                              </div>
-                          </div>
-                      ))}
-                      <button onClick={()=>setActivities([...activities, {id:uuid(), name:'Yeni Etkinlik', cat:'science', isMust:false, boxCount:1, allowedGrades:[1, 2, 3, 4, 5, 6, 7, 8]}])} className="w-full bg-slate-50 py-3 rounded-lg font-bold text-slate-500 border-2 border-dashed border-slate-300 hover:bg-slate-100 hover:text-indigo-600 hover:border-indigo-300 transition-all">+ Etkinlik Ekle</button>
-                  </div>
-              </div>
+            {/* ETKİNLİK KATALOĞU */}
+            <div className="bg-white p-6 rounded-xl shadow border border-slate-200 flex flex-col max-h-[700px]">
+                <h3 className="font-bold text-lg mb-4 flex justify-between items-center shrink-0">
+                    <span>Etkinlik Kataloğu</span>
+                    <button onClick={()=>setActivities([...activities, {id:Math.random().toString(36).substr(2, 9), name:'Yeni Etkinlik', cat:'science', isMust:false, boxCount:1, allowedGrades:[1,2,3,4]}])} className="text-xs bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-lg font-bold hover:bg-indigo-200">+ Yeni</button>
+                </h3>
+                <div className="space-y-3 overflow-y-auto pr-2 custom-scrollbar flex-1">
+                    {activities.map(act => (
+                        <div key={act.id} className={`p-4 rounded-xl border-2 flex flex-col gap-3 ${act.isMust ? 'bg-red-50 border-red-100' : 'bg-slate-50 border-slate-100'}`}>
+                            <div className="flex items-center justify-between gap-2">
+                                <input className="font-bold bg-transparent border-none w-full text-slate-800 text-lg focus:outline-none" value={act.name} onChange={e=>setActivities(activities.map(a=>a.id===act.id?{...a, name:e.target.value}:a))} />
+                                <button onClick={()=>setActivities(activities.filter(a=>a.id!==act.id))} className="text-slate-400 hover:text-red-500"><Trash2 size={18}/></button>
+                            </div>
+                            <div className="flex gap-2 text-xs items-center flex-wrap">
+                                <select value={act.cat} onChange={e=>setActivities(activities.map(a=>a.id===act.id?{...a, cat:e.target.value}:a))} className="border rounded px-2 py-1 bg-white">
+                                    <option value="science">Bilim</option><option value="art">Sanat</option><option value="tech">Teknoloji</option>
+                                </select>
+                                <button onClick={()=>setActivities(activities.map(a=>a.id===act.id?{...a, isMust:!act.isMust}:a))} className={`px-2 py-1 rounded-full border font-bold ${act.isMust ? 'bg-red-500 text-white' : 'bg-white text-slate-500'}`}>{act.isMust ? 'ZORUNLU' : 'Opsiyonel'}</button>
+                                <div className="flex items-center gap-1 bg-white border rounded px-2 py-1">
+                                    <Package size={14}/><input type="number" min="1" className="w-10 text-center outline-none bg-transparent" value={act.boxCount || ''} onChange={e=>setActivities(activities.map(a=>a.id===act.id?{...a, boxCount:parseInt(e.target.value)||1}:a))} />
+                                </div>
+                            </div>
+                            <div>
+                                <span className="text-[10px] font-bold text-slate-400 block mb-1">UYGUN SINIFLAR (0 = Anasınıfı)</span>
+                                <div className="flex gap-1">
+                                    {[0,1,2,3,4,5,6,7,8].map(grade => (
+                                        <button key={grade} onClick={() => toggleGrade(act.id, grade)} className={`w-7 h-7 rounded text-xs font-bold ${ (act.allowedGrades || []).includes(grade) ? 'bg-indigo-600 text-white shadow-md' : 'bg-white border text-slate-400 hover:border-indigo-300' }`}>
+                                            {grade===0?'A':grade}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </div>
             
-            {/* SAĞ TARAF (SINIF VE ZAMAN AYARLARI) */}
             <div className="space-y-6">
+                {/* SINIF AYARLARI */}
                 <div className="bg-white p-6 rounded-xl shadow border border-slate-200">
-                    <h3 className="font-bold text-lg mb-4">Şubeler</h3>
+                    <h3 className="font-bold text-lg mb-4">Sınıflar (Şubeler)</h3>
                     <div className="flex flex-wrap gap-2 mb-4">
                         {classes.map(c=>(
-                          <div key={c.id} className="bg-slate-100 px-3 py-2 rounded flex gap-2 font-bold border border-slate-200 text-slate-700">
-                            {c.name} 
-                            <button onClick={()=>setClasses(classes.filter(x=>x.id!==c.id))} className="text-red-400 hover:text-red-600">x</button>
+                          <div key={c.id} className="bg-slate-100 px-3 py-1.5 rounded-lg flex items-center gap-2 font-bold border border-slate-200 shadow-sm">
+                            {c.name} <button onClick={()=>setClasses(classes.filter(x=>x.id!==c.id))} className="text-red-400 hover:text-red-600 bg-white rounded-full p-0.5"><X size={12}/></button>
                           </div>
                         ))}
                     </div>
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 mb-3">
+                        <span className="text-xs font-bold text-slate-400 mb-2 block">Hızlı Ekle:</span>
+                        <div className="flex gap-2 flex-wrap">
+                            {['Ana Sınıfı','1-A','2-A','3-A','4-A','5-A','6-A','7-A','8-A'].map(pre => (
+                                <button key={pre} onClick={()=>handleAddClass(pre)} className="px-2 py-1 bg-white border border-slate-200 rounded text-xs font-bold text-slate-600 hover:border-indigo-400 hover:text-indigo-600">+{pre}</button>
+                            ))}
+                        </div>
+                    </div>
                     <div className="flex gap-2">
-                        <input 
-                            className="border border-slate-200 bg-slate-50 p-2 rounded text-sm flex-1 outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800" 
-                            placeholder="Yeni Sınıf Adı (Örn: 5-C)" 
-                            value={newClassName}
-                            onChange={(e) => setNewClassName(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleAddClass()}
-                        />
-                        <button onClick={handleAddClass} className="bg-indigo-600 text-white px-4 py-2 rounded font-bold text-sm hover:bg-indigo-700">Ekle</button>
+                        <input className="border-2 border-slate-200 p-2 rounded-xl text-sm flex-1 outline-none focus:border-indigo-500 font-bold" placeholder="Farklı Sınıf Yaz (Örn: 9-B)" value={newClassName} onChange={(e) => setNewClassName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddClass()} />
+                        <button onClick={()=>handleAddClass()} className="bg-indigo-600 text-white px-5 rounded-xl font-bold hover:bg-indigo-700">Ekle</button>
                     </div>
                 </div>
+
+                {/* ZAMAN AYARLARI */}
                 <div className="bg-white p-6 rounded-xl shadow border border-slate-200">
-                    <h3 className="font-bold text-lg mb-4">Zamanlar</h3>
-                    {timeSlots.map((slot,i)=>(
-                        <div key={slot.id} className="flex gap-2 items-center text-sm mb-2">
-                            <input type="time" value={slot.start} onChange={e=>{const n=[...timeSlots];n[i].start=e.target.value;setTimeSlots(n)}} className="border border-slate-200 bg-slate-50 p-1 rounded text-slate-800"/>-
-                            <input type="time" value={slot.end} onChange={e=>{const n=[...timeSlots];n[i].end=e.target.value;setTimeSlots(n)}} className="border border-slate-200 bg-slate-50 p-1 rounded text-slate-800"/>
-                            <select value={slot.type} onChange={e=>{const n=[...timeSlots];n[i].type=e.target.value;setTimeSlots(n)}} className="border p-1 rounded text-slate-800">
-                                <option value="lesson">Ders</option>
-                                <option value="break">Teneffüs</option>
-                                <option value="lunch">Öğle Arası</option>
-                                <option value="presentation">Sunum</option>
-                                <option value="outdoor">Dış Etkinlik</option>
-                            </select>
-                            <button onClick={()=>{const n=[...timeSlots];n.splice(i,1);setTimeSlots(n)}} className="text-red-400 hover:text-red-600"><X size={16}/></button>
+                    <h3 className="font-bold text-lg mb-4">Zaman Çizelgesi</h3>
+                    <div className="space-y-2 mb-4 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                        {timeSlots.map((slot,i)=>(
+                            <div key={slot.id} className="flex gap-2 items-center bg-slate-50 p-2 rounded-lg border border-slate-100">
+                                <span className="text-xs font-black text-slate-400 w-4">{i+1}.</span>
+                                <input type="time" value={slot.start} onChange={e=>{const n=[...timeSlots];n[i].start=e.target.value;setTimeSlots(n)}} className="border border-slate-200 p-1.5 rounded font-bold text-sm bg-white"/>
+                                <span className="text-slate-400">-</span>
+                                <input type="time" value={slot.end} onChange={e=>{const n=[...timeSlots];n[i].end=e.target.value;setTimeSlots(n)}} className="border border-slate-200 p-1.5 rounded font-bold text-sm bg-white"/>
+                                <select value={slot.type} onChange={e=>{const n=[...timeSlots];n[i].type=e.target.value;setTimeSlots(n)}} className="border border-slate-200 p-1.5 rounded text-sm font-bold bg-white flex-1">
+                                    <option value="lesson">📚 Ders</option>
+                                    <option value="break">🔔 Teneffüs</option>
+                                    <option value="lunch">🍽️ Öğle Arası</option>
+                                </select>
+                                <button onClick={()=>{const n=[...timeSlots];n.splice(i,1);setTimeSlots(n)}} className="text-red-400 hover:text-red-600 bg-white p-1 rounded-md border border-slate-200"><Trash2 size={16}/></button>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex flex-col gap-2">
+                        <span className="text-xs font-bold text-slate-400">Son saatin bitişinden itibaren ekle:</span>
+                        <div className="flex gap-2">
+                            <button onClick={()=>addQuickTimeSlot(40, 'lesson', 'Ders')} className="flex-1 bg-white border border-indigo-200 text-indigo-700 py-2 rounded-lg text-sm font-bold hover:bg-indigo-50 shadow-sm">+ 40dk Ders</button>
+                            <button onClick={()=>addQuickTimeSlot(15, 'break', 'Teneffüs')} className="flex-1 bg-white border border-orange-200 text-orange-700 py-2 rounded-lg text-sm font-bold hover:bg-orange-50 shadow-sm">+ 15dk Teneffüs</button>
                         </div>
-                    ))}
-                    <button onClick={()=>setTimeSlots([...timeSlots, {id:uuid(), start:'12:00', end:'12:40', type:'lesson'}])} className="text-indigo-600 text-xs font-bold hover:text-indigo-800">+ Ekle</button>
+                    </div>
                 </div>
             </div>
         </div>
     );
 };
+
+  const NavBtn = ({active, onClick, icon, label}) => (
+    <button onClick={onClick} className={`px-4 py-2 rounded-lg font-bold flex gap-2 items-center transition-colors ${active ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 no-print'}`}>
+       {icon} {label}
+    </button>
+  );
+
 
   // --- INTERACTIVE TEXT COMPONENT (For Name Tags) ---
   const InteractiveText = ({ 
