@@ -4,105 +4,25 @@ import {
   Calendar, Users, FileText, Image as ImageIcon, Printer, 
   Plus, Trash2, Upload, X, 
   CheckCircle2, BookOpen, GraduationCap, 
-   Package, Sparkles,
-  RefreshCw, Wand2, Zap, ChevronDown, ChevronUp,
+  Package, Sparkles, RefreshCw, Wand2, Zap, ChevronDown, ChevronUp,
   Type, Minus, PlusCircle, Maximize2, Smile,
-  Camera, Settings2, MoveVertical,
-  Maximize,Download, UploadCloud
+  Camera, Settings2, MoveVertical, Maximize,
+  Download, UploadCloud, Search, BarChart3
 } from 'lucide-react';
 
-
 /*
-ProManager+ v28 ( önceki 28 versiyonu da çöpe attım say) — Teknik Özet (Geliştirici Yorumu)
+ProManager+ v28 — Teknik Özet (Geliştirici Yorumu)
 -------------------------------------------------
 Amaç:
 - Etkinlik ve gönüllü yönetimini merkezi VOLUNTEERS veri table kullanarak sağlamak.
 - Modüller arası gerçek zamanlı çakışma tespiti, A4 baskı desteği ve tutarlı veri senkronizasyonu.
 - "B.A.L.K.I.Z." AI asistanı ile kullanıcı deneyimini iyileştirme.
-- Yüksek erişilebilirlik, güvenlik ve GDPR/KVKK uyumluluğu.
-- Ölçeklenebilir mikroservis mimarisi ve event-driven veri akışı.
-- Offline destek ve düşük sisteme uygun işlemler.
-
-Modüller:
-1. InfinityScheduler
-   - Görev zamanlama, AI tabanlı dağıtım, çakışma tespiti ve yeniden atama.
-   - Örnek API: POST /schedules, GET /schedules/{id}, POST /schedules/{id}/assign
-
-2. NameTagApp
-   - Dinamik şablon yönetimi, yazıcı kuyruğu (CUPS/IPP), PDF önizleme ve baskı.
-   - Örnek API: POST /nametags/preview, POST /nametags/print
-
-3. CollageApp
-   - Görsel yükleme, otomatik layout (aspect-ratio + önem skoru), export.
-   - Yerleşim: greedy + lokal optimizasyon (ör. simulated annealing).
-   - Örnek API: POST /collages
-
-4. DocumentCreator
-   - Şablon tabanlı belge üretimi, veri bağlama, PDF/A çıktısı.
-   - Örnek API: POST /documents/generate
-
-Ortak Bileşenler:
-- B.A.L.K.I.Z. V2.0 Assistant ( Algoritmik Zeka Sistemi - Aynısını Yapay Zeka Etkinliği için de kullanabilirsiniz )
-  - Debounced cevaplar (configurable 300–1000 ms), token-bucket rate limiting.
-  - Redis kısa kontekst; anonim telemetry uzun dönem öğrenme.
-- Central Data Layer
-  - VOLUNTEERS = single source of truth; event-driven senkronizasyon.
-
-Veri Modeli (Örnek):
-- volunteers: id UUID PK, name, email UNIQUE, phone, status ENUM, deleted_at TIMESTAMP
-- schedules: id UUID PK, event_id FK, start TIMESTAMP, end TIMESTAMP, metadata JSONB
-- audit_events: id UUID PK, entity_type, entity_id, action, payload JSONB, created_at
-
-Silme ve Tutarlılık:
-- Soft-delete + transactional propagation.
-- İşlem akışı: Begin Transaction -> soft-delete flag -> publish delete-event -> downstream güncelle -> commit; hata -> rollback + retry.
-- Stratejiler: Event Sourcing, Optimistic Locking (version), Idempotency Keys.
-
-Gerçek Zaman & Çakışma Tespiti:
-- Event Bus: Kafka/RabbitMQ; Realtime: WebSocket/SSE.
-- Çakışma tespiti: interval tree / temporal index; server-side 409 Conflict + öneri seti.
-- Çözüm: otomatik (AI önerisi) veya manuel (alternatif gösterimi).
-
-Baskı & UI:
-- Print: HTML/CSS -> PDF (Puppeteer veya wkhtmltopdf), 300 DPI, A4 margin, yazıcı profiline göre CSS medya sorguları.
-- Drag-and-drop: Immutable state (Redux/Zustand), undo/redo, ARIA erişilebilirlik.
-
-CI/CD, Test, İzleme:
-- Pipeline: Lint -> Unit -> Integration -> Build -> Canary -> Prod (GitHub Actions/GitLab CI).
-- Test: Unit (%>80), Integration (event propagation), E2E (Cypress/Playwright).
-- Monitoring: Prometheus + Grafana; Logging: JSON -> ELK/EFK; Alerting: SLO bazlı.
-
-Güvenlik & Uyumluluk:
-- Auth: OAuth2 / OIDC; RBAC; scope kontrolü.
-- Encryption: TLS 1.2+ in-transit; AES-256 at-rest.
-- GDPR / KVKK uyumluluğu: veri işleme kayıtları, silme talepleri, denetim izleri.
-
-Geliştirici Kuralları:
-- Kod stili: ESLint + Prettier (frontend); backend için PSR-12 / Google Java Style.
-- Branching: GitFlow veya trunk-based; mandatory PR review.
-- Migrations: Flyway/Liquibase; API Contract: OpenAPI 3.0 (mock server ile contract tests).
-
-Notlar:
-- Tüm kritik işlemler idempotent olmalı; event log immutable; API çağrılarında idempotency header kullanın.
-- Silme işlemleri için kesin propagation garantisi gerekiyorsa distributed transaction yerine event-driven retry + dead-letter queue tercih edin.
-- Performans için önbellekleme (Redis/Memcached) ve CDN kullanımı önerilir.
-TO DO:
-- Gelişmiş AI öneri motoru (makine öğrenimi tabanlı).
-- Mobil uygulama desteği (React Native/Flutter).
-- Optimal kaynak kullanımı için serverless fonksiyonlar (AWS Lambda/Fargate).
-- Görselleştirme ve raporlama modülü (Grafana entegrasyonu).
-- Tutanak ve raporlar için belge şablonları kütüphanesi.
-- Kullanıcı geri bildirim mekanizması ve hata raporlama.
-- Performans optimizasyonları ve yük testi.
--------------------------------------------------
-Github'ta Private Olarak Koyuyoruz, İLKYAR Öğrenci Topluluğu İçin Geliştirildi.
-Halen Ulaşmak İstersen, simseklermustafaberke@gmail.com :)
 */
 
 // --- DATABASE KEYS ---
 const DB_KEYS = {
   ACTIVITIES: 'activities_v15',
-  VOLUNTEERS: 'shared_volunteers_data', // CENTRAL SOURCE
+  VOLUNTEERS: 'shared_volunteers_data', 
   TIMESLOTS: 'timeSlots_v25',
   CLASSES: 'classes_v13',
   NAMETAG_VOLUNTEERS: 'data',
@@ -140,16 +60,10 @@ const db = {
   }
 };
 
-/**
- * CENTRAL SYNC FUNCTION
- * Syncs volunteer data from main source to all modules
- * Call this after any volunteer modification
- */
 const syncVolunteers = (sourceData = null) => {
   try {
     const mainVolunteers = sourceData || db.load(DB_KEYS.VOLUNTEERS, []);
     
-    // Propagate to all modules
     db.save(DB_KEYS.VOLUNTEERS, mainVolunteers);
     db.save(DB_KEYS.NAMETAG_VOLUNTEERS, mainVolunteers);
     db.save(DB_KEYS.COLLAGE_VOLUNTEERS, mainVolunteers);
@@ -265,7 +179,7 @@ export default function ProManagerApp() {
   .ai-core-container.idle { 
     animation: breathe-idle 4s ease-in-out infinite; 
   }
-  /* Print sayfaları için özel class */
+  
 .print-page {
   width: 210mm;
   height: 297mm;
@@ -304,7 +218,6 @@ export default function ProManagerApp() {
   }
 
   @media print {
-  /* 1. TÜM KAPSAYICI KİLİTLERİNİ AÇ */
   html, body {
     height: auto !important;
     overflow: visible !important;
@@ -312,56 +225,47 @@ export default function ProManagerApp() {
     padding: 0 !important;
   }
 
-  /* Ana App kapsayıcısındaki (div.h-screen) flex ve overflow kısıtlamasını kaldır */
   .flex.h-screen {
     display: block !important;
     height: auto !important;
     overflow: visible !important;
   }
 
-  /* Main alanını serbest bırak */
   main {
     height: auto !important;
     overflow: visible !important;
     display: block !important;
-    position: static !important; /* Relative yerine static olsun */
+    position: static !important; 
     padding: 0 !important;
     margin: 0 !important;
   }
 
-  /* 2. DİĞER ELEMANLARI GİZLE */
   aside, header, .no-print {
     display: none !important;
   }
 
-  /* Renkleri Koru */
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
-  /* 3. SAYFA AYARLARI (Senin kodunla aynı, sadece garantiye alıyoruz) */
   .print-page {
     width: 210mm !important;
     height: 297mm !important;
     min-height: 297mm !important;
     max-height: 297mm !important;
     margin: 0 !important;
-    padding: 5mm !important; /* Senin padding ayarın */
-    
-    /* Sayfa Kırılımı Zorla */
+    padding: 5mm !important; 
     page-break-after: always !important;
     page-break-inside: avoid !important;
     break-after: page !important;
     break-inside: avoid !important;
-    
     overflow: hidden !important;
     display: block !important;
     position: relative !important;
     background: white !important;
   }
 
-  /* Son sayfanın arkasına boş sayfa atmasını engelle */
   .print-page:last-child {
     page-break-after: auto !important;
     break-after: auto !important;
@@ -421,11 +325,6 @@ const SidebarItem = ({ id, icon, label, active, onClick }) => (
   </button>
 );
 
-/**
- * B.A.L.K.I.Z. CONSOLE - AI Assistant Component
- * Features debounced message updates to prevent spam
- * Only updates when warnings/state actually change
- */
 const BalkizRainbowConsole = ({ 
   warnings = [], 
   aiState = 'idle', 
@@ -440,7 +339,6 @@ const BalkizRainbowConsole = ({
   const lastMessageRef = useRef("");
   const debounceTimerRef = useRef(null);
 
-  // DEBOUNCED MESSAGE GENERATOR - Prevents spam
   useEffect(() => {
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
 
@@ -496,19 +394,17 @@ const BalkizRainbowConsole = ({
         msg = warningMessages[Math.floor(Math.random() * warningMessages.length)];
       }
 
-      // Only update if message actually changed
       if (msg && msg !== lastMessageRef.current) {
         lastMessageRef.current = msg;
         setTargetText(msg);
       }
-    }, 800); // 800ms debounce
+    }, 800); 
 
     return () => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     };
   }, [warnings.length, aiState, hasDistributed, activeAction]);
 
-  // Typing animation
   useEffect(() => {
     if (targetText && isOpen) { 
       setIsAnimating(true); 
@@ -567,32 +463,16 @@ const BalkizRainbowConsole = ({
   );
 };
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { 
-  Calendar, Users, FileText, Image as ImageIcon, Printer, 
-  Plus, Trash2, Upload, X, 
-  CheckCircle2, BookOpen, GraduationCap, 
-  Search, Package, BarChart3, Sparkles,
-  RefreshCw, Wand2, Zap, ChevronDown, ChevronUp,
-  Type, Minus, PlusCircle, Maximize2, Smile,
-  Camera, Settings2, MoveVertical,
-  Maximize, Download, UploadCloud // YENİ EKLENEN İKONLAR
-} from 'lucide-react';
-
-// ... (DB_KEYS, db, syncVolunteers, uuid, IMAGES, Saat ve App ana bileşeni önceki kodunla tamamen aynı kalacak) ...
-
 // --- MODULE 1: INFINITY SCHEDULER (EXCEL & BACKUP DESTEKLİ) ---
 function InfinityScheduler({ onNotify }) {
   const [activeView, setActiveView] = useState('view');
 
-  // --- MANTIK AYARLARI ---
   const LOGIC_CONFIG = {
     primaryBlacklist: ['kimya', 'fizik', 'robot', 'yapay zeka','geleceğe mektup'],
     primaryWhitelist: ['yaratıcı drama', 'origami', 'yüz boyama', 'pino mino', 'müzik', 'resim'],
     middleSchoolPreferred: ['kimya', 'fizik', 'göremediğimiz canavarlar', 'fen', 'matematik', 'robot', 'masa deneyleri', 'vr', 'müzik', 'edebiyat']
   };
 
-  // --- DATA STATES ---
   const [activities, setActivities] = useState(db.load(DB_KEYS.ACTIVITIES, []));
   const [volunteers, setVolunteers] = useState(db.load(DB_KEYS.VOLUNTEERS, []));
   const [timeSlots, setTimeSlots] = useState(db.load(DB_KEYS.TIMESLOTS, []));
@@ -606,7 +486,6 @@ function InfinityScheduler({ onNotify }) {
   const dragItem = useRef();
   const fileInputRef = useRef(null);
 
-  // --- SYNC EFFECTS ---
   useEffect(() => { db.save(DB_KEYS.ACTIVITIES, activities); }, [activities]);
   useEffect(() => { db.save(DB_KEYS.VOLUNTEERS, volunteers); }, [volunteers]); 
   useEffect(() => { db.save(DB_KEYS.TIMESLOTS, timeSlots); }, [timeSlots]);
@@ -622,18 +501,12 @@ function InfinityScheduler({ onNotify }) {
   
   const normalize = (text) => text ? text.toLocaleLowerCase('tr').trim() : '';
 
-  // ==========================================
-  // EXPORT / IMPORT İŞLEMLERİ (EXCEL VE YEDEK)
-  // ==========================================
-
-  // 1. EXCEL (CSV) ÇIKTISI
   const exportToExcelCSV = () => {
     if(classes.length === 0 || timeSlots.length === 0) {
       onNotify("Dışa aktarılacak program bulunamadı!");
       return;
     }
 
-    // BOM (Byte Order Mark) ekleyelim ki Excel Türkçe karakterleri (ç, ş, ğ) düzgün okusun
     let csvContent = '\uFEFF'; 
     csvContent += 'SAAT / SINIF,' + classes.map(c => c.name).join(',') + '\n';
 
@@ -647,7 +520,6 @@ function InfinityScheduler({ onNotify }) {
            const cell = c.schedule[slot.id];
            if (!cell) return 'BOŞ';
            if (cell.activityId === 'NO_CLASS') return 'DERS YOK';
-           // Virgüller CSV'yi bozmasın diye tırnak içine alıyoruz
            return `"${cell.name} (${cell.lead})"`;
          }).join(',');
       }
@@ -665,7 +537,6 @@ function InfinityScheduler({ onNotify }) {
     onNotify("Excel (CSV) dosyası indirildi!");
   };
 
-  // 2. TAM SİSTEM YEDEĞİ İNDİRME (JSON)
   const exportBackupJSON = () => {
     const backupData = { activities, volunteers, timeSlots, classes };
     const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
@@ -679,7 +550,6 @@ function InfinityScheduler({ onNotify }) {
     onNotify("Sistem Yedeği (JSON) indirildi!");
   };
 
-  // 3. TAM SİSTEM YEDEĞİ YÜKLEME (JSON)
   const handleImportBackup = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -693,7 +563,6 @@ function InfinityScheduler({ onNotify }) {
             setClasses(importedData.classes || []);
             setTimeSlots(importedData.timeSlots || []);
             if (importedData.activities) setActivities(importedData.activities);
-            // Gönüllüleri güncellerken global sync yapalım ki diğer sekmeler de güncellensin
             if (importedData.volunteers) {
                setVolunteers(importedData.volunteers);
                syncVolunteers(importedData.volunteers); 
@@ -710,12 +579,10 @@ function InfinityScheduler({ onNotify }) {
       }
     };
     reader.readAsText(file);
-    // Inputu sıfırla ki aynı dosyayı tekrar yükleyebilsin
     if(fileInputRef.current) fileInputRef.current.value = '';
   };
 
 
-  // --- KAPSAMLI PLANLAMA ARAÇLARI ---
   const markAsNoClass = () => {
     setClasses(classes.map(c => {
       if (c.id !== editingSlot.clsId) return c;
@@ -752,7 +619,6 @@ function InfinityScheduler({ onNotify }) {
     }
   };
 
-  // --- CONFLICT & WARNING LOGIC (B.A.L.K.I.Z. BRAIN) ---
   const calculateConflicts = useCallback(() => {
     const newWarnings = [];
     const lessonSlots = timeSlots.filter(t => t.type === 'lesson');
@@ -764,7 +630,7 @@ function InfinityScheduler({ onNotify }) {
       
       const actCounts = {}, volCounts = {};
       Object.entries(cls.schedule).forEach(([slotId, slot]) => {
-        if (slot.activityId === 'NO_CLASS') return; // Ders yoksa es geç
+        if (slot.activityId === 'NO_CLASS') return;
 
         const activity = activities.find(a => a.id === slot.activityId);
         if (activity) {
@@ -1002,7 +868,6 @@ function InfinityScheduler({ onNotify }) {
 
   return (
     <div className="space-y-6 relative">
-      {/* HEADER */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 no-print flex flex-wrap gap-2 items-center relative z-50">
         <NavBtn active={activeView==='view'} onClick={()=>setActiveView('view')} icon={<Calendar size={18}/>} label="Program" />
         <NavBtn active={activeView==='setup'} onClick={()=>setActiveView('setup')} icon={<BookOpen size={18}/>} label="Kurulum & Zaman" />
@@ -1010,7 +875,6 @@ function InfinityScheduler({ onNotify }) {
         
         <div className="flex-1"></div>
         
-        {/* EXPORT / IMPORT DÜĞMELERİ */}
         {activeView === 'view' && (
           <div className="flex gap-2 border-l pl-4 border-slate-200">
              <button onClick={exportToExcelCSV} className="bg-green-50 text-green-700 hover:bg-green-100 border border-green-200 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors" title="Excel'de açmak için CSV olarak indir">
@@ -1027,7 +891,6 @@ function InfinityScheduler({ onNotify }) {
         )}
       </div>
 
-      {/* VIEWS */}
       {activeView === 'view' && (
         <>
           <BalkizRainbowConsole warnings={warnings} aiState={aiState} isOpen={isConsoleOpen} onClose={() => setIsConsoleOpen(false)} hasDistributed={hasDistributed} />
@@ -1109,7 +972,6 @@ function InfinityScheduler({ onNotify }) {
 
       {activeView === 'setup' && <SetupModule activities={activities} setActivities={setActivities} timeSlots={timeSlots} setTimeSlots={setTimeSlots} classes={classes} setClasses={setClasses} onNotify={onNotify} />}
 
-      {/* EDIT MODAL */}
       {editingSlot && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh] animate-fadeIn">
@@ -1136,7 +998,6 @@ function InfinityScheduler({ onNotify }) {
                 </select>
               </div>
 
-              {/* Hızlı Planlama Araçları */}
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2 mt-4">
                 <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-2"><Settings2 size={14}/> Hızlı Planlama Araçları</h4>
                 <button onClick={markAsNoClass} className="w-full py-2.5 bg-white border-2 border-slate-300 text-slate-600 hover:bg-slate-100 rounded-xl font-bold text-sm flex justify-center gap-2"><Minus size={16}/> Sadece Bu Sınıfa Dersi Kapat</button>
@@ -1157,7 +1018,6 @@ function InfinityScheduler({ onNotify }) {
   );
 }
 
-// --- SETUP MODULE (İLERİ SEVİYE BUTONLAŞTIRILMIŞ VERSİYON) ---
 const SetupModule = ({ activities, setActivities, timeSlots, setTimeSlots, classes, setClasses, onNotify }) => {
     const [newClassName, setNewClassName] = useState('');
 
@@ -1216,23 +1076,18 @@ const SetupModule = ({ activities, setActivities, timeSlots, setTimeSlots, class
         }
     };
 
-    // Sınıf seçenekleri dizisi (Kolay render için)
     const classOptions = ['Ana Sınıfı', '1-A', '1-B', '2-A', '2-B', '3-A', '3-B', '4-A', '4-B', '5-A', '5-B', '6-A', '6-B', '7-A', '7-B', '8-A', '8-B'];
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fadeIn text-slate-800">
-            {/* ETKİNLİK KATALOĞU (Aynı kaldı) */}
             <div className="bg-white p-6 rounded-xl shadow border border-slate-200 flex flex-col max-h-[700px]">
-                {/* Bkz. Önceki Etkinlik Kataloğu Kodları... (Değişiklik yok) */}
                 <h3 className="font-bold text-lg mb-4">Etkinlik Kataloğu (Bkz. Önceki Kod)</h3>
             </div>
             
             <div className="space-y-6">
-                {/* YENİ: TAMAMEN BUTONLAŞTIRILMIŞ SINIF AYARLARI */}
                 <div className="bg-white p-6 rounded-xl shadow border border-slate-200">
                     <h3 className="font-bold text-lg mb-4">Sınıflar (Şubeler)</h3>
                     
-                    {/* Sınıf Butonları Izgarası */}
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 mb-6">
                         {classOptions.map(clsName => {
                             const isSelected = classes.find(c => c.name === clsName);
@@ -1248,14 +1103,12 @@ const SetupModule = ({ activities, setActivities, timeSlots, setTimeSlots, class
                         })}
                     </div>
 
-                    {/* Opsiyonel Manuel Giriş */}
                     <div className="flex gap-2 pt-4 border-t border-slate-100">
                         <input className="border-2 border-slate-200 p-2 rounded-xl text-sm flex-1 outline-none focus:border-indigo-500 font-bold bg-slate-50 focus:bg-white" placeholder="Manuel Sınıf Yaz (Örn: 9-C)" value={newClassName} onChange={(e) => setNewClassName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleManualAddClass()} />
                         <button onClick={handleManualAddClass} className="bg-slate-800 text-white px-5 rounded-xl font-bold hover:bg-slate-700">Ekle</button>
                     </div>
                 </div>
 
-                {/* YENİ: BUTONLAŞTIRILMIŞ ZAMAN AYARLARI */}
                 <div className="bg-white p-6 rounded-xl shadow border border-slate-200">
                     <div className="flex justify-between items-center mb-4">
                         <h3 className="font-bold text-lg">Zaman Çizelgesi</h3>
@@ -1264,7 +1117,6 @@ const SetupModule = ({ activities, setActivities, timeSlots, setTimeSlots, class
                         </button>
                     </div>
 
-                    {/* Hızlı Ekleme Butonları */}
                     <div className="bg-slate-50 p-2 rounded-xl border border-slate-100 flex flex-wrap gap-2 mb-4 justify-center">
                         <button onClick={()=>addQuickTimeSlot(40, 'lesson', 'Ders')} className="bg-white border border-indigo-200 text-indigo-700 px-3 py-2 rounded-lg text-xs font-bold hover:bg-indigo-50 shadow-sm flex-1">+40dk Ders</button>
                         <button onClick={()=>addQuickTimeSlot(15, 'break', 'Teneffüs')} className="bg-white border border-orange-200 text-orange-700 px-3 py-2 rounded-lg text-xs font-bold hover:bg-orange-50 shadow-sm flex-1">+15dk Teneffüs</button>
@@ -1300,7 +1152,6 @@ const NavBtn = ({active, onClick, icon, label}) => (
   </button>
 );
 
-  // --- INTERACTIVE TEXT COMPONENT (For Name Tags) ---
   const InteractiveText = ({ 
     text, 
     size, 
@@ -1386,7 +1237,6 @@ const NavBtn = ({active, onClick, icon, label}) => (
     );
   };
 
-  // --- INTERACTIVE PHOTO COMPONENT (For Collage) ---
   const InteractivePhoto = ({ src, scale, translateX, translateY, onUpdate, id }) => {
     const [isDragging, setIsDragging] = useState(false);
     const startPosRef = useRef({ x: 0, y: 0 });
@@ -1460,7 +1310,6 @@ const NavBtn = ({active, onClick, icon, label}) => (
     );
   };
 
-  // --- MODULE 2: NAME TAG APP ---
   function NameTagApp({ onNotify }) {
     const ROWS_PER_PAGE = 5;
     const [pagePadding, setPagePadding] = useState(5); 
@@ -1479,7 +1328,6 @@ const NavBtn = ({active, onClick, icon, label}) => (
       syncVolunteers(volunteers);
     }, [volunteers]);
 
-    // Analysis Engine
     useEffect(() => {
       if (aiState === 'processing') return;
       
@@ -1528,18 +1376,10 @@ const NavBtn = ({active, onClick, icon, label}) => (
       }, 1000);
     };
 
-    /**
-     * FIXED: Volunteer deletion with proper database sync
-     */
     const removeVolunteer = (id) => {
       const updatedVolunteers = volunteers.filter(v => v.id !== id);
-      
-      // 1. Update all databases FIRST
       syncVolunteers(updatedVolunteers);
-      
-      // 2. Then update state
       setVolunteers(updatedVolunteers);
-      
       onNotify("Gönüllü tüm modüllerden silindi");
     };
 
@@ -1573,21 +1413,10 @@ const NavBtn = ({active, onClick, icon, label}) => (
 const getPages = () => {
   const pages = [];
   
-  // Her 5 gönüllü için 1 isimlik sayfası + 1 soru sayfası
   for (let i = 0; i < volunteers.length; i += 5) {
     const chunk = volunteers.slice(i, i + 5);
-    
-    // İsimlik sayfası
-    pages.push({ 
-      type: 'names', 
-      items: chunk
-    });
-    
-    // Soru sayfası
-    pages.push({ 
-      type: 'questions', 
-      items: chunk
-    });
+    pages.push({ type: 'names', items: chunk });
+    pages.push({ type: 'questions', items: chunk });
   }
   console.log('📄 Toplam Sayfa:', pages.length, 'Gönüllü:', volunteers.length); 
   return pages;
@@ -1595,88 +1424,42 @@ const getPages = () => {
 
 return (
   <div className="space-y-6">
-    {/* BALKIZ & CONTROLS - Ekranda görünür, yazdırmada GİZLİ */}
     <div className="no-print">
-       <BalkizRainbowConsole 
-          aiState={aiState}
-          activeAction={activeAction}
-          warnings={warnings}
-       />
-       
+       <BalkizRainbowConsole aiState={aiState} activeAction={activeAction} warnings={warnings} />
        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
           <div className="flex flex-col gap-2">
              <div className="flex items-center gap-2 text-xs font-black text-slate-400 uppercase tracking-tighter">
                <Settings2 size={12}/> Kenar Boşluğu
              </div>
-             <input 
-               type="range" 
-               min="0" 
-               max="30" 
-               value={pagePadding} 
-               onChange={(e) => setPagePadding(parseInt(e.target.value))} 
-               className="w-full h-2 bg-slate-100 rounded-lg cursor-pointer accent-indigo-600"
-             />
+             <input type="range" min="0" max="30" value={pagePadding} onChange={(e) => setPagePadding(parseInt(e.target.value))} className="w-full h-2 bg-slate-100 rounded-lg cursor-pointer accent-indigo-600" />
           </div>
 
           <div className="flex flex-col gap-2">
              <div className="flex items-center gap-2 text-xs font-black text-slate-400 uppercase tracking-tighter">
                <MoveVertical size={12}/> Dikdörtgenleştir
              </div>
-             <input 
-               type="range" 
-               min="0" 
-               max="30" 
-               value={verticalCompression} 
-               onChange={(e) => setVerticalCompression(parseInt(e.target.value))} 
-               className="w-full h-2 bg-slate-100 rounded-lg cursor-pointer accent-orange-500"
-             />
+             <input type="range" min="0" max="30" value={verticalCompression} onChange={(e) => setVerticalCompression(parseInt(e.target.value))} className="w-full h-2 bg-slate-100 rounded-lg cursor-pointer accent-orange-500" />
           </div>
 
           <div className="flex flex-col gap-2">
              <div className="flex items-center gap-2 text-xs font-black text-slate-400 uppercase tracking-tighter">
                <Maximize size={12}/> Genel Ölçek
              </div>
-             <input 
-               type="range" 
-               min="70" 
-               max="100" 
-               value={globalScale} 
-               onChange={(e) => setGlobalScale(parseInt(e.target.value))} 
-               className="w-full h-2 bg-slate-100 rounded-lg cursor-pointer accent-indigo-600"
-             />
+             <input type="range" min="70" max="100" value={globalScale} onChange={(e) => setGlobalScale(parseInt(e.target.value))} className="w-full h-2 bg-slate-100 rounded-lg cursor-pointer accent-indigo-600" />
           </div>
 
           <div className="flex items-end">
-            <button 
-              onClick={handleAutoFix} 
-              className="w-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 text-white px-6 py-3 rounded-xl font-bold flex gap-2 items-center justify-center shadow-lg shadow-fuchsia-200 transform active:scale-95 transition-all"
-            >
+            <button onClick={handleAutoFix} className="w-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 text-white px-6 py-3 rounded-xl font-bold flex gap-2 items-center justify-center shadow-lg shadow-fuchsia-200 transform active:scale-95 transition-all">
               <Wand2 size={18}/> B.A.L.K.I.Z. Düzenlesin
             </button>
           </div>
        </div>
     </div>
-{/* PAGE RENDERER */}
+
 <div className="block space-y-12 pb-20 print:space-y-0 print:pb-0">
   {getPages().map((page, pIndex) => (
-    <div 
-      key={pIndex}
-           className="print-page .print-page bg-white shadow-2xl mx-auto overflow-hidden print:shadow-none print:m-0" 
-style={{ 
-          padding: `${pagePadding}mm`,
-          marginBottom: pIndex < getPages().length - 1 ? '3rem' : '0'
-        }}
-    >
-      <div 
-        className="grid grid-cols-2 content-start w-full h-full bg-white"
-        style={{
-          transform: `scale(${globalScale / 100})`,
-          transformOrigin: 'top center',
-          height: `${100 - verticalCompression}%`,
-          gridTemplateRows: `repeat(${ROWS_PER_PAGE}, 1fr)`,
-          gap: `${cardGap}mm`
-        }}
-      >
+    <div key={pIndex} className="print-page bg-white shadow-2xl mx-auto overflow-hidden print:shadow-none print:m-0" style={{ padding: `${pagePadding}mm`, marginBottom: pIndex < getPages().length - 1 ? '3rem' : '0' }}>
+      <div className="grid grid-cols-2 content-start w-full h-full bg-white" style={{ transform: `scale(${globalScale / 100})`, transformOrigin: 'top center', height: `${100 - verticalCompression}%`, gridTemplateRows: `repeat(${ROWS_PER_PAGE}, 1fr)`, gap: `${cardGap}mm` }}>
         {page.items.map((vol) => {
           const activeNameSize = vol.nameSize || 60;
           const activeSurnameSize = vol.surnameSize || 12;
@@ -1689,18 +1472,10 @@ style={{
               {/* SOL KART */}
               <div className="relative group w-full h-full overflow-visible border border-dashed border-slate-100 hover:border-indigo-400 transition-all bg-white print:border-none">
                 <div className="absolute inset-0 w-full h-full z-0 overflow-hidden">
-                  <img 
-                    src={page.type === 'names' ? IMAGES.NAME_BG : IMAGES.QUESTION_BG} 
-                    className="w-full h-full object-fill" 
-                    alt="bg" 
-                  />
+                  <img src={page.type === 'names' ? IMAGES.NAME_BG : IMAGES.QUESTION_BG} className="w-full h-full object-fill" alt="bg" />
                 </div>
-
                 <div className="absolute top-2 right-2 z-50 no-print opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button 
-                    onClick={() => removeVolunteer(vol.id)} 
-                    className="p-1 bg-white text-red-500 rounded-full shadow-sm border border-red-50 hover:scale-110"
-                  >
+                  <button onClick={() => removeVolunteer(vol.id)} className="p-1 bg-white text-red-500 rounded-full shadow-sm border border-red-50 hover:scale-110">
                     <Trash2 size={10}/>
                   </button>
                 </div>
@@ -1709,81 +1484,35 @@ style={{
                   {page.type === 'names' ? (
                     <div className="relative text-center w-full">
                       <div className="flex flex-col items-center justify-center leading-none">
-                        <InteractiveText 
-                          text={nameData.first} 
-                          size={activeNameSize} 
-                          offsetY={activeNameY}
-                          onUpdate={(s, o) => handleInteractiveUpdate(vol.id, 'name', s, o)}
-                          className="font-comic font-bold text-slate-800 whitespace-nowrap drop-shadow-sm"
-                        />
-                        <InteractiveText 
-                          text={nameData.last} 
-                          size={activeSurnameSize} 
-                          offsetY={activeSurnameY}
-                          onUpdate={(s, o) => handleInteractiveUpdate(vol.id, 'surname', s, o)}
-                          className="font-comic font-black text-slate-900 uppercase whitespace-nowrap mt-1 drop-shadow-sm"
-                        />
+                        <InteractiveText text={nameData.first} size={activeNameSize} offsetY={activeNameY} onUpdate={(s, o) => handleInteractiveUpdate(vol.id, 'name', s, o)} className="font-comic font-bold text-slate-800 whitespace-nowrap drop-shadow-sm" />
+                        <InteractiveText text={nameData.last} size={activeSurnameSize} offsetY={activeSurnameY} onUpdate={(s, o) => handleInteractiveUpdate(vol.id, 'surname', s, o)} className="font-comic font-black text-slate-900 uppercase whitespace-nowrap mt-1 drop-shadow-sm" />
                       </div>
                       <div className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity no-print">
-                        <button 
-                          onClick={() => { 
-                            const n = prompt("Düzenle:", vol.name); 
-                            if(n) updateVolunteer(vol.id, 'name', n); 
-                          }} 
-                          className="bg-indigo-50 text-indigo-600 p-1.5 rounded-lg text-xs font-bold shadow-sm"
-                        >
-                          ✐
-                        </button>
+                        <button onClick={() => { const n = prompt("Düzenle:", vol.name); if(n) updateVolunteer(vol.id, 'name', n); }} className="bg-indigo-50 text-indigo-600 p-1.5 rounded-lg text-xs font-bold shadow-sm">✐</button>
                       </div>
                     </div>
                   ) : (
-                    <textarea 
-                      value={vol.question || ''} 
-                      onChange={(e) => updateVolunteer(vol.id, 'question', e.target.value)}
-                      className="w-[85%] h-[60%] bg-transparent outline-none text-center font-comic resize-none flex items-center justify-center pt-8 text-slate-700 print:resize-none"
-                      style={{ fontSize: `${(activeNameSize) * 0.4}px` }}
-                    />
+                    <textarea value={vol.question || ''} onChange={(e) => updateVolunteer(vol.id, 'question', e.target.value)} className="w-[85%] h-[60%] bg-transparent outline-none text-center font-comic resize-none flex items-center justify-center pt-8 text-slate-700 print:resize-none" style={{ fontSize: `${(activeNameSize) * 0.4}px` }} />
                   )}
                 </div>
               </div>
 
-              {/* SAĞ KART (AYNI İÇERİK) */}
+              {/* SAĞ KART */}
               <div className="relative group w-full h-full overflow-visible border border-dashed border-slate-100 hover:border-indigo-400 transition-all bg-white print:border-none">
                 <div className="absolute inset-0 w-full h-full z-0 overflow-hidden">
-                  <img 
-                    src={page.type === 'names' ? IMAGES.NAME_BG : IMAGES.QUESTION_BG} 
-                    className="w-full h-full object-fill" 
-                    alt="bg" 
-                  />
+                  <img src={page.type === 'names' ? IMAGES.NAME_BG : IMAGES.QUESTION_BG} className="w-full h-full object-fill" alt="bg" />
                 </div>
 
                 <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-4">
                   {page.type === 'names' ? (
                     <div className="relative text-center w-full">
                       <div className="flex flex-col items-center justify-center leading-none">
-                        <InteractiveText 
-                          text={nameData.first} 
-                          size={activeNameSize} 
-                          offsetY={activeNameY}
-                          onUpdate={(s, o) => handleInteractiveUpdate(vol.id, 'name', s, o)}
-                          className="font-comic font-bold text-slate-800 whitespace-nowrap drop-shadow-sm"
-                        />
-                        <InteractiveText 
-                          text={nameData.last} 
-                          size={activeSurnameSize} 
-                          offsetY={activeSurnameY}
-                          onUpdate={(s, o) => handleInteractiveUpdate(vol.id, 'surname', s, o)}
-                          className="font-comic font-black text-slate-900 uppercase whitespace-nowrap mt-1 drop-shadow-sm"
-                        />
+                        <InteractiveText text={nameData.first} size={activeNameSize} offsetY={activeNameY} onUpdate={(s, o) => handleInteractiveUpdate(vol.id, 'name', s, o)} className="font-comic font-bold text-slate-800 whitespace-nowrap drop-shadow-sm" />
+                        <InteractiveText text={nameData.last} size={activeSurnameSize} offsetY={activeSurnameY} onUpdate={(s, o) => handleInteractiveUpdate(vol.id, 'surname', s, o)} className="font-comic font-black text-slate-900 uppercase whitespace-nowrap mt-1 drop-shadow-sm" />
                       </div>
                     </div>
                   ) : (
-                    <textarea 
-                      value={vol.question || ''} 
-                      onChange={(e) => updateVolunteer(vol.id, 'question', e.target.value)}
-                      className="w-[85%] h-[60%] bg-transparent outline-none text-center font-comic resize-none flex items-center justify-center pt-8 text-slate-700 print:resize-none"
-                      style={{ fontSize: `${(activeNameSize) * 0.4}px` }}
-                    />
+                    <textarea value={vol.question || ''} onChange={(e) => updateVolunteer(vol.id, 'question', e.target.value)} className="w-[85%] h-[60%] bg-transparent outline-none text-center font-comic resize-none flex items-center justify-center pt-8 text-slate-700 print:resize-none" style={{ fontSize: `${(activeNameSize) * 0.4}px` }} />
                   )}
                 </div>
               </div>
@@ -1795,11 +1524,9 @@ style={{
   ))}
 </div>
 
-
   </div>
 );
-
-  }
+}
 
   // --- MODULE 3: COLLAGE APP ---
   function CollageApp({ onNotify }) {
@@ -1818,7 +1545,6 @@ style={{
       db.save(DB_KEYS.COLLAGE_VOLUNTEERS, volunteers);
       syncVolunteers(volunteers);
       
-      // Analysis
       const issues = [];
       const missingPhotos = volunteers.filter(v => !v.photo);
       if (missingPhotos.length > 0) issues.push({ type: 'stock', msg: `${missingPhotos.length} fotoğraf henüz yüklenmemiş.` });
@@ -1835,7 +1561,6 @@ style={{
       setAiState('processing');
       setTimeout(() => {
         let baseList = [...volunteers];
-
         const sorted = baseList.sort((a, b) => {
           const isAVural = a.name.toLowerCase().includes("vural");
           const isBVural = b.name.toLowerCase().includes("vural");
@@ -1871,18 +1596,10 @@ style={{
       }
     };
 
-    /**
-     * FIXED: Volunteer deletion with proper database sync
-     */
     const removeVolunteer = (id) => {
       const updatedVolunteers = volunteers.filter(v => v.id !== id);
-      
-      // 1. Update all databases FIRST
       syncVolunteers(updatedVolunteers);
-      
-      // 2. Then update state
       setVolunteers(updatedVolunteers);
-      
       onNotify("Gönüllü tüm modüllerden silindi");
     };
 
@@ -1907,14 +1624,8 @@ style={{
 
     return (
       <div className="space-y-6">
-        {/* BALKIZ & CONTROLS */}
         <div className="no-print">
-           <BalkizRainbowConsole 
-              aiState={aiState} 
-              activeAction={activeAction} 
-              warnings={warnings}
-           />
-
+           <BalkizRainbowConsole aiState={aiState} activeAction={activeAction} warnings={warnings} />
            <div className="bg-white p-5 rounded-3xl shadow-lg border border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-6 mb-6 items-end">
               <div className="flex flex-col gap-2">
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5"><Type size={10}/> İsim Boyutu</label>
@@ -1924,7 +1635,6 @@ style={{
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5"><Maximize2 size={10}/> Kenar Payı</label>
                   <input type="range" min="0" max="30" value={pagePadding} onChange={(e) => setPagePadding(parseInt(e.target.value))} className="w-full accent-pink-600 cursor-pointer"/>
               </div>
-              
               <div>
                 <button onClick={handleAutoFix} className="w-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 text-white px-6 py-3 rounded-xl font-bold flex gap-2 items-center justify-center shadow-lg shadow-fuchsia-200 transform active:scale-95 transition-all">
                   <Wand2 size={18}/> B.A.L.K.I.Z. Düzenlesin
@@ -1933,42 +1643,17 @@ style={{
            </div>
         </div>
 
-        {/* A4 PAGE */}
         <div className="flex justify-center pb-20 print-container">
-            <div 
-              className=".print-page bg-white shadow-2xl overflow-hidden flex flex-col" 
-              style={{ 
-                  width: '210mm', 
-                  height: '297mm', 
-                  padding: `${pagePadding}mm`
-              }}
-            >
-               {/* HEADER */}
+            <div className=".print-page bg-white shadow-2xl overflow-hidden flex flex-col" style={{ width: '210mm', height: '297mm', padding: `${pagePadding}mm` }}>
                <div className="w-full mb-3 px-4 shrink-0">
-                  <input 
-                      value={projectTitle} 
-                      onChange={(e) => setProjectTitle(e.target.value)}
-                      className="w-full text-center bg-transparent border-none outline-none font-comic font-black text-slate-900 tracking-tight"
-                      style={{ fontSize: volunteers.length > 12 ? '22px' : '28px' }}
-                  />
+                  <input value={projectTitle} onChange={(e) => setProjectTitle(e.target.value)} className="w-full text-center bg-transparent border-none outline-none font-comic font-black text-slate-900 tracking-tight" style={{ fontSize: volunteers.length > 12 ? '22px' : '28px' }} />
                </div>
                
-               {/* GRID */}
-               <div 
-                  className="grid w-full gap-3 flex-1 min-h-0"
-                  style={{
-                      gridTemplateColumns: `repeat(${cols}, 1fr)`,
-                      gridTemplateRows: `repeat(${rows}, 1fr)`,
-                  }}
-               >
+               <div className="grid w-full gap-3 flex-1 min-h-0" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)`, gridTemplateRows: `repeat(${rows}, 1fr)` }}>
                   {volunteers.map((vol, index) => (
                      <div key={vol.id} className="relative flex flex-col items-center justify-center p-2 border border-slate-100 rounded-2xl bg-slate-50/20 group hover:border-indigo-400 transition-all overflow-hidden">
-                        {/* Tools */}
                         <div className="absolute top-1 right-1 flex flex-col gap-1 no-print opacity-0 group-hover:opacity-100 transition-all z-40">
-                          <button 
-                            onClick={() => removeVolunteer(vol.id)} 
-                            className="p-1 bg-white text-red-500 rounded-full shadow-sm border border-red-50 hover:scale-110"
-                          >
+                          <button onClick={() => removeVolunteer(vol.id)} className="p-1 bg-white text-red-500 rounded-full shadow-sm border border-red-50 hover:scale-110">
                              <Trash2 size={10}/>
                           </button>
                           <button onClick={() => moveVolunteer(index, -1)} disabled={index === 0} className="p-1 bg-white text-indigo-600 rounded-full shadow-sm border border-indigo-50 hover:scale-110 disabled:opacity-30">
@@ -1980,17 +1665,9 @@ style={{
                         </div>
 
                         <div className="relative w-full aspect-square mb-2 shrink-0 overflow-hidden rounded-xl bg-white border border-slate-100 shadow-sm">
-                            <InteractivePhoto 
-                                id={vol.id} src={vol.photo} scale={vol.scale}
-                                translateX={vol.translateX} translateY={vol.translateY}
-                                onUpdate={handlePhotoUpdate}
-                            />
+                            <InteractivePhoto id={vol.id} src={vol.photo} scale={vol.scale} translateX={vol.translateX} translateY={vol.translateY} onUpdate={handlePhotoUpdate} />
                             {!vol.photo && (
-                                <input 
-                                    type="file" accept="image/*" 
-                                    onChange={(e) => updatePhotoSrc(vol.id, e)}
-                                    className="absolute inset-0 opacity-0 cursor-pointer z-30"
-                                />
+                                <input type="file" accept="image/*" onChange={(e) => updatePhotoSrc(vol.id, e)} className="absolute inset-0 opacity-0 cursor-pointer z-30" />
                             )}
                             {vol.photo && (
                                 <label className="absolute top-1 left-1 no-print opacity-0 group-hover:opacity-100 transition-opacity p-2 bg-white/90 rounded-full text-indigo-600 cursor-pointer z-40 shadow-sm border border-slate-100">
@@ -2005,10 +1682,7 @@ style={{
                                 value={vol.name} 
                                 onChange={(e) => setVolunteers(volunteers.map(v => v.id === vol.id ? {...v, name: e.target.value} : v))}
                                 className="w-full text-center bg-transparent border-none outline-none font-comic font-bold text-slate-800 tracking-tight resize-none overflow-hidden"
-                                style={{ 
-                                  fontSize: `${globalNameSize}px`,
-                                  height: '2.5em',
-                                }}
+                                style={{ fontSize: `${globalNameSize}px`, height: '2.5em' }}
                                 rows={2}
                             />
                         </div>
@@ -2016,7 +1690,6 @@ style={{
                   ))}
                </div>
 
-               {/* FOOTER */}
                <div className="w-full mt-auto pt-4 px-4 shrink-0 flex flex-col items-center gap-3">
                   <div className="flex items-center gap-4 text-indigo-600 font-black tracking-[0.25em] text-[18px] group/msg">
                       <span className="w-12 h-[2px] bg-indigo-100 group-hover/msg:w-20 transition-all duration-700"></span>
@@ -2042,7 +1715,7 @@ style={{
   }
 
   // --- MODULE 4: DOCUMENT CREATOR ---
-  function DocumentCreator({ }) {
+  function DocumentCreator() {
     const [formData, setFormData] = useState({ 
       no: '2026/01', 
       date: '', 
