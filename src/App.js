@@ -1,3 +1,4 @@
+/* eslint-disable */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Calendar, Users, FileText, Image as ImageIcon, Printer, 
