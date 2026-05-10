@@ -1343,10 +1343,13 @@ function InfinityScheduler({ onNotify }) {
                     {[0,1,2,3,4,5,6,7,8].map(g => {
                       const sel=(act.allowedGrades||[]).includes(g);
                       return (
-                        <button key={g} onClick={()=>{setActivities(prev=>prev.map(a=>{if(a.id!==act.id)return a;const gr=a.allowedGrades||[];return {...a,allowedGrades:gr.includes(g)?gr.filter(x=>x!==g):[...gr,g]};}))}
-                          className={`w-8 h-8 rounded-lg text-[11px] font-700 transition-all active:scale-95 ${sel?'bg-indigo-600 text-white shadow-sm':'bg-white border border-slate-200 text-slate-400 hover:border-indigo-300'}`}>
-                          {g===0?'A':g}
-                        </button>
+ <button 
+  key={g} 
+  onClick={()=>{setActivities(prev=>prev.map(a=>{if(a.id!==act.id)return a;const gr=a.allowedGrades||[];return {...a,allowedGrades:gr.includes(g)?gr.filter(x=>x!==g):[...gr,g]};}))}
+  className={`w-8 h-8 rounded-lg text-[11px] font-700 transition-all active:scale-95 ${sel?'bg-indigo-600 text-white shadow-sm':'bg-white border border-slate-200 text-slate-400 hover:border-indigo-300'}`}>
+  {g===0?'A':g}
+</button>
+
                       );
                     })}
                   </div>
