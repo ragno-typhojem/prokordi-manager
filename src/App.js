@@ -962,147 +962,161 @@ function InfinityScheduler({ onNotify }) {
   // ── OTOMATİK PROGRAM OLUŞTUR ─────────────────────────────────────────────
   const autoGenerateProgram = useCallback(() => {
     if (aiState === 'processing') return;
+    setAiState('processing');
     setAutoGenStep('Hazırlanıyor…');
 
-    // Adım 1: Sınıf yoksa ekle
     setTimeout(() => {
-      setClasses(prev => {
-        if (prev.length > 0) return prev;
-        setAutoGenStep('Sınıflar oluşturuluyor…');
-        return ['Ana Sınıfı','1-A','1-B','2-A','2-B','3-A','3-B','4-A','4-B'].map(n => ({ id: uuid(), name: n, schedule: {} }));
-      });
-    }, 50);
+      // 1) Tüm nihai değerleri yerel değişkenlere al (setState closure sorunu yok)
+      const finalClasses = classes.length > 0
+        ? classes
+        : ['Ana Sınıfı','1-A','1-B','2-A','2-B','3-A','3-B','4-A','4-B']
+            .map(n => ({ id: uuid(), name: n, schedule: {} }));
 
-    // Adım 2: Etkinlik yoksa varsayılanları ekle
-    setTimeout(() => {
-      setActivities(prev => {
-        if (prev.length > 0) return prev;
-        setAutoGenStep('Etkinlikler oluşturuluyor…');
-        const defaults = [
-          { name: 'Origami',            isMust: false, boxCount: 10, allowedGrades: [0,1,2,3,4] },
-          { name: 'Yaratıcı Drama',      isMust: true,  boxCount: 8,  allowedGrades: [0,1,2,3,4,5,6,7,8] },
-          { name: 'Resim',               isMust: false, boxCount: 12, allowedGrades: [0,1,2,3,4,5,6,7,8] },
-          { name: 'Müzik',               isMust: true,  boxCount: 8,  allowedGrades: [0,1,2,3,4,5,6,7,8] },
-          { name: 'Yüz Boyama',          isMust: false, boxCount: 6,  allowedGrades: [0,1,2,3,4] },
-          { name: 'Kimya Deneyleri',     isMust: false, boxCount: 4,  allowedGrades: [4,5,6,7,8] },
-          { name: 'Fizik Deneyleri',     isMust: false, boxCount: 4,  allowedGrades: [5,6,7,8] },
-          { name: 'Robotik',             isMust: false, boxCount: 3,  allowedGrades: [5,6,7,8] },
-          { name: 'Masa Deneyleri',      isMust: false, boxCount: 6,  allowedGrades: [4,5,6,7,8] },
-          { name: 'Pino Mino',           isMust: false, boxCount: 5,  allowedGrades: [0,1,2,3,4] },
-        ];
-        return defaults.map(d => ({ id: uuid(), cat: 'science', allowedGrades: [], ...d }));
-      });
-    }, 150);
+      const defaultActs = [
+        { name:'Origami',        isMust:false, boxCount:10, allowedGrades:[0,1,2,3,4] },
+        { name:'Yaratıcı Drama', isMust:true,  boxCount:8,  allowedGrades:[0,1,2,3,4,5,6,7,8] },
+        { name:'Resim',          isMust:false, boxCount:12, allowedGrades:[0,1,2,3,4,5,6,7,8] },
+        { name:'Müzik',          isMust:true,  boxCount:8,  allowedGrades:[0,1,2,3,4,5,6,7,8] },
+        { name:'Yüz Boyama',     isMust:false, boxCount:6,  allowedGrades:[0,1,2,3,4] },
+        { name:'Kimya Deneyleri',isMust:false, boxCount:4,  allowedGrades:[4,5,6,7,8] },
+        { name:'Fizik Deneyleri',isMust:false, boxCount:4,  allowedGrades:[5,6,7,8] },
+        { name:'Robotik',        isMust:false, boxCount:3,  allowedGrades:[5,6,7,8] },
+        { name:'Masa Deneyleri', isMust:false, boxCount:6,  allowedGrades:[4,5,6,7,8] },
+        { name:'Pino Mino',      isMust:false, boxCount:5,  allowedGrades:[0,1,2,3,4] },
+      ].map(d => ({ id: uuid(), cat: 'science', ...d }));
 
-    // Adım 3: Zaman dilimi yoksa şablonu yükle
-    setTimeout(() => {
-      setTimeSlots(prev => {
-        if (prev.length > 0) return prev;
-        setAutoGenStep('Zaman çizelgesi kuruluyor…');
-        return [
-          { id: 't1', start: '09:00', end: '09:40', type: 'lesson' },
-          { id: 't2', start: '09:40', end: '09:55', type: 'break'  },
-          { id: 't3', start: '09:55', end: '10:35', type: 'lesson' },
-          { id: 't4', start: '10:35', end: '10:50', type: 'break'  },
-          { id: 't5', start: '10:50', end: '11:30', type: 'lesson' },
-          { id: 't6', start: '11:30', end: '12:30', type: 'lunch'  },
-          { id: 't7', start: '12:30', end: '13:10', type: 'lesson' },
-          { id: 't8', start: '13:10', end: '13:25', type: 'break'  },
-          { id: 't9', start: '13:25', end: '14:05', type: 'lesson' },
-        ];
-      });
-    }, 300);
+      const finalActivities = activities.length > 0 ? activities : defaultActs;
 
-    // Adım 4: Dağıtımı başlat (state güncellemelerinin React'e işlenmesi için 800ms bekle)
-    setTimeout(() => {
-      setAutoGenStep('Program dağıtılıyor…');
-      setAiState('processing');
+      const defaultSlots = [
+        { id:'t1', start:'09:00', end:'09:40', type:'lesson' },
+        { id:'t2', start:'09:40', end:'09:55', type:'break'  },
+        { id:'t3', start:'09:55', end:'10:35', type:'lesson' },
+        { id:'t4', start:'10:35', end:'10:50', type:'break'  },
+        { id:'t5', start:'10:50', end:'11:30', type:'lesson' },
+        { id:'t6', start:'11:30', end:'12:30', type:'lunch'  },
+        { id:'t7', start:'12:30', end:'13:10', type:'lesson' },
+        { id:'t8', start:'13:10', end:'13:25', type:'break'  },
+        { id:'t9', start:'13:25', end:'14:05', type:'lesson' },
+      ];
+      const finalSlots = timeSlots.length > 0 ? timeSlots : defaultSlots;
+
+      // 2) State güncellemelerini uygula
+      setClasses(finalClasses);
+      setActivities(finalActivities);
+      setTimeSlots(finalSlots);
       setHasDistributed(true);
+      setAutoGenStep('Dağıtılıyor…');
 
+      // 3) Dağıtım mantığını yerel değerlerle çalıştır (stale closure yok)
       setTimeout(() => {
-        // distributePerfectly'nin iç mantığını buraya göm (state closure sorunu olmadığı için)
-        setClasses(currentClasses => {
-          setTimeSlots(currentSlots => {
-            setActivities(currentActivities => {
-              setVolunteers(currentVolunteers => {
-                const lessonSlots = currentSlots.filter(t => t.type === 'lesson');
-                if (!lessonSlots.length || !currentClasses.length || !currentActivities.length) {
-                  setAiState('idle'); setAutoGenStep('');
-                  onNotify('Gönüllü ekleyin ve tekrar deneyin!');
-                  return currentVolunteers;
-                }
+        const lessonSlots = finalSlots.filter(t => t.type === 'lesson');
 
-                const volLoad = {};
-                currentVolunteers.forEach(v => { volLoad[v.id] = 0; });
+        if (!lessonSlots.length || !finalClasses.length || !finalActivities.length || !volunteers.length) {
+          setAiState('idle');
+          setAutoGenStep('');
+          onNotify(volunteers.length === 0
+            ? '⚠️ Gönüllü eklenmemiş — önce Gönüllüler sekmesinden ekleyin.'
+            : '⚠️ Program oluşturulamadı.');
+          return;
+        }
 
-                const getTotalUsage = (actId, allClasses) => {
-                  let n = 0; allClasses.forEach(c => Object.values(c.schedule).forEach(s => { if (s.activityId === actId) n++; })); return n;
-                };
-                const isInClass = (actId, cls) => Object.values(cls.schedule || {}).some(s => s.activityId === actId);
-                const findLead = (actId, slotId, clsId, allClasses) => {
-                  const act = currentActivities.find(a => a.id === actId);
-                  if (getTotalUsage(actId, allClasses) >= (act?.boxCount || 99)) return null;
-                  const capable   = currentVolunteers.filter(v => v.capabilities.includes(actId));
-                  const available = capable.filter(v => !allClasses.some(c => c.id !== clsId && c.schedule[slotId]?.leadId === v.id));
-                  if (!available.length) return null;
-                  available.sort((a, b) => ((volLoad[a.id]||0) - (volLoad[b.id]||0)) || (a.capabilities.length - b.capabilities.length));
-                  return available[0];
-                };
+        const volLoad = {};
+        volunteers.forEach(v => { volLoad[v.id] = 0; });
 
-                const runOnce = () => {
-                  let nc = JSON.parse(JSON.stringify(currentClasses));
-                  nc.forEach(c => { Object.keys(c.schedule).forEach(s => { if (!c.schedule[s].isLocked) delete c.schedule[s]; }); });
-                  const mustActs = currentActivities.filter(a => a.isMust);
-                  const optActs  = currentActivities.filter(a => !a.isMust);
-                  const shuffled = [...nc].sort(() => Math.random() - 0.5);
+        const getTotalUsage = (actId, allCls) => {
+          let n = 0;
+          allCls.forEach(c => Object.values(c.schedule).forEach(s => { if (s.activityId === actId) n++; }));
+          return n;
+        };
+        const isInClass = (actId, cls) =>
+          Object.values(cls.schedule || {}).some(s => s.activityId === actId);
 
-                  shuffled.forEach(cls => {
-                    const free = [...lessonSlots].filter(s => !cls.schedule[s.id]).sort(() => Math.random() - 0.5);
-                    mustActs.forEach(must => {
-                      if (!checkConstraints(must, cls.name) || isInClass(must.id, cls)) return;
-                      for (let i = 0; i < free.length; i++) {
-                        const s = free[i];
-                        const lead = findLead(must.id, s.id, cls.id, nc);
-                        if (lead) { nc.find(c => c.id === cls.id).schedule[s.id] = { activityId: must.id, name: must.name, isMust: true, lead: lead.name, leadId: lead.id, support: [] }; volLoad[lead.id] = (volLoad[lead.id]||0)+1; free.splice(i,1); break; }
-                      }
-                    });
-                  });
-                  nc.forEach(cls => {
-                    lessonSlots.forEach(s => {
-                      if (cls.schedule[s.id]) return;
-                      const cands = optActs.filter(a => checkConstraints(a, cls.name) && !isInClass(a.id, cls)).sort(() => Math.random() - 0.5);
-                      for (const act of cands) {
-                        const lead = findLead(act.id, s.id, cls.id, nc);
-                        if (lead) { cls.schedule[s.id] = { activityId: act.id, name: act.name, isMust: false, lead: lead.name, leadId: lead.id, support: [] }; volLoad[lead.id] = (volLoad[lead.id]||0)+1; break; }
-                      }
-                    });
-                  });
-                  let filled = 0; nc.forEach(c => lessonSlots.forEach(s => { if (c.schedule[s.id]) filled++; }));
-                  return { classes: nc, score: filled };
-                };
+        const findLead = (actId, slotId, clsId, allCls) => {
+          const act = finalActivities.find(a => a.id === actId);
+          if (getTotalUsage(actId, allCls) >= (act?.boxCount || 99)) return null;
+          const capable   = volunteers.filter(v => v.capabilities.includes(actId));
+          const available = capable.filter(v =>
+            !allCls.some(c => c.id !== clsId && c.schedule[slotId]?.leadId === v.id)
+          );
+          if (!available.length) return null;
+          available.sort((a, b) =>
+            ((volLoad[a.id] || 0) - (volLoad[b.id] || 0)) ||
+            (a.capabilities.length - b.capabilities.length)
+          );
+          return available[0];
+        };
 
-                let best = null;
-                for (let i = 0; i < 5; i++) { const r = runOnce(); if (!best || r.score > best.score) best = r; if (best.score === currentClasses.length * lessonSlots.length) break; }
-
-                // Apply result
-                setTimeout(() => {
-                  setClasses(best.classes);
-                  setAiState('idle');
-                  setAutoGenStep('');
-                  onNotify(`✨ Program hazır! (${best.score} slot dolduruldu)`);
-                }, 0);
-
-                return currentVolunteers;
-              });
-              return currentActivities;
+        const runOnce = () => {
+          const nc = JSON.parse(JSON.stringify(finalClasses));
+          nc.forEach(c => {
+            Object.keys(c.schedule).forEach(s => {
+              if (!c.schedule[s].isLocked) delete c.schedule[s];
             });
-            return currentSlots;
           });
-          return currentClasses;
-        });
-      }, 500);
-    }, 900);
-  }, [aiState, checkConstraints, onNotify]);
+          const mustActs = finalActivities.filter(a => a.isMust);
+          const optActs  = finalActivities.filter(a => !a.isMust);
+          const shuffled = [...nc].sort(() => Math.random() - 0.5);
+
+          shuffled.forEach(cls => {
+            const free = [...lessonSlots]
+              .filter(s => !cls.schedule[s.id])
+              .sort(() => Math.random() - 0.5);
+            mustActs.forEach(must => {
+              if (!checkConstraints(must, cls.name) || isInClass(must.id, cls)) return;
+              for (let i = 0; i < free.length; i++) {
+                const lead = findLead(must.id, free[i].id, cls.id, nc);
+                if (lead) {
+                  nc.find(c => c.id === cls.id).schedule[free[i].id] = {
+                    activityId: must.id, name: must.name, isMust: true,
+                    lead: lead.name, leadId: lead.id, support: []
+                  };
+                  volLoad[lead.id] = (volLoad[lead.id] || 0) + 1;
+                  free.splice(i, 1);
+                  break;
+                }
+              }
+            });
+          });
+
+          nc.forEach(cls => {
+            lessonSlots.forEach(s => {
+              if (cls.schedule[s.id]) return;
+              const cands = optActs
+                .filter(a => checkConstraints(a, cls.name) && !isInClass(a.id, cls))
+                .sort(() => Math.random() - 0.5);
+              for (const act of cands) {
+                const lead = findLead(act.id, s.id, cls.id, nc);
+                if (lead) {
+                  cls.schedule[s.id] = {
+                    activityId: act.id, name: act.name, isMust: false,
+                    lead: lead.name, leadId: lead.id, support: []
+                  };
+                  volLoad[lead.id] = (volLoad[lead.id] || 0) + 1;
+                  break;
+                }
+              }
+            });
+          });
+
+          let filled = 0;
+          nc.forEach(c => lessonSlots.forEach(s => { if (c.schedule[s.id]) filled++; }));
+          return { classes: nc, score: filled };
+        };
+
+        let best = null;
+        for (let i = 0; i < 5; i++) {
+          const r = runOnce();
+          if (!best || r.score > best.score) best = r;
+          if (best.score === finalClasses.length * lessonSlots.length) break;
+        }
+
+        setClasses(best.classes);
+        setAiState('idle');
+        setAutoGenStep('');
+        onNotify(`✨ Program hazır! (${best.score} slot dolduruldu)`);
+      }, 200);
+    }, 80);
+  }, [aiState, classes, activities, timeSlots, volunteers, checkConstraints, onNotify]);
 
   // ── RENDER ───────────────────────────────────────────────────────────────
   return (
@@ -1343,13 +1357,10 @@ function InfinityScheduler({ onNotify }) {
                     {[0,1,2,3,4,5,6,7,8].map(g => {
                       const sel=(act.allowedGrades||[]).includes(g);
                       return (
-<button 
-  key={g} 
-  onClick={()=>{setActivities(prev=>prev.map(a=>{if(a.id!==act.id)return a;const gr=a.allowedGrades||[];return {...a,allowedGrades:gr.includes(g)?gr.filter(x=>x!==g):[...gr,g]};}))}
-  className={`w-8 h-8 rounded-lg text-[11px] font-700 transition-all active:scale-95 ${sel?'bg-indigo-600 text-white shadow-sm':'bg-white border border-slate-200 text-slate-400 hover:border-indigo-300'}`}>
-  {g===0?'A':g}
-</button>
-
+                        <button key={g} onClick={()=>{setActivities(prev=>prev.map(a=>{if(a.id!==act.id)return a;const gr=a.allowedGrades||[];return {...a,allowedGrades:gr.includes(g)?gr.filter(x=>x!==g):[...gr,g]};})};}}
+                          className={`w-8 h-8 rounded-lg text-[11px] font-700 transition-all active:scale-95 ${sel?'bg-indigo-600 text-white shadow-sm':'bg-white border border-slate-200 text-slate-400 hover:border-indigo-300'}`}>
+                          {g===0?'A':g}
+                        </button>
                       );
                     })}
                   </div>
@@ -1523,7 +1534,7 @@ function InfinityScheduler({ onNotify }) {
 }
 
 // ─── INTERACTIVE TEXT ─────────────────────────────────────────────────────────
-const InteractiveText = ({ text, size, offsetY, onUpdate, className, style, placeholder, isEditable, onEditChange }) => {
+const InteractiveText = ({ text, size, offsetY, onUpdate, className, style, placeholder, isEditable }) => {
   const [dragging, setDragging] = useState(false);
   const startPos = useRef({ x: 0, y: 0 });
   const startVals = useRef({ size: 0, offset: 0 });
@@ -1555,21 +1566,12 @@ const InteractiveText = ({ text, size, offsetY, onUpdate, className, style, plac
         ${dragging ? 'opacity-100' : 'opacity-0 group-hover/t:opacity-60'} transition-opacity`}>
         {Math.round(size)}px
       </div>
-      {isEditable === true ? (
-        <input 
-          type="text" 
-          value={text} 
-          onChange={(e) => onEditChange?.(e.target.value)}
-          className="bg-transparent text-center w-full outline-none" 
-          onMouseDown={e=>e.stopPropagation()}
-        />
-      ) : (
-        <span>{text || placeholder}</span>
-      )}
+      {isEditable
+        ? <input type="text" value={text} onChange={isEditable} className="bg-transparent text-center w-full outline-none" onMouseDown={e=>e.stopPropagation()}/>
+        : <span>{text || placeholder}</span>}
     </div>
   );
 };
-
 
 // ─── INTERACTIVE PHOTO ────────────────────────────────────────────────────────
 const InteractivePhoto = ({ src, scale, translateX, translateY, onUpdate, id }) => {
@@ -1741,7 +1743,7 @@ function NameTagApp({ onNotify }) {
                           {page.type==='names' ? (
                             <div className="relative text-center w-full">
                               <div className="flex flex-col items-center justify-center leading-none">
-                                <InteractiveText text={nd.first} size={vol.nameSize||60} offsetY={vol.nameY||0} onUpdate={(s,o)=>handleInteractiveUpdate(vol.id,'name',s,o)} className="font-comic font-bold text-slate-800 whitespace-nowrap drop-shadow-sm" isEditable={false} />
+                                <InteractiveText text={nd.first} size={vol.nameSize||60} offsetY={vol.nameY||0} onUpdate={(s,o)=>handleInteractiveUpdate(vol.id,'name',s,o)} className="font-comic font-bold text-slate-800 whitespace-nowrap drop-shadow-sm"/>
                                 <InteractiveText text={nd.last} size={vol.surnameSize||12} offsetY={vol.surnameY||0} onUpdate={(s,o)=>handleInteractiveUpdate(vol.id,'surname',s,o)} className="font-comic font-black text-slate-900 uppercase whitespace-nowrap mt-1 drop-shadow-sm"/>
                               </div>
                               {side===1 && (
@@ -1864,25 +1866,8 @@ function CollageApp({ onNotify }) {
                   <button onClick={()=>moveVolunteer(idx,1)} disabled={idx===volunteers.length-1} className="p-1 bg-white text-indigo-600 rounded-full shadow-sm border border-indigo-50 hover:scale-110 disabled:opacity-30"><ChevronDown size={10}/></button>
                 </div>
                 <div className="relative w-full h-full min-h-0 mb-1 overflow-hidden rounded-xl bg-white border border-slate-100 shadow-sm flex items-center justify-center">
-                  <InteractivePhoto id={vol.id} src={vol.photo} scale={vol.scale || 1} translateX={vol.translateX} translateY={vol.translateY} onUpdate={(id,s,x,y)=>setVolunteers(prev=>prev.map(v=>v.id===id?{...v,scale:s,translateX:x,translateY:y}:v))}/>
-              {!vol.photo && (
-  <label className="absolute inset-0 opacity-0 cursor-pointer z-30">
-    <input 
-      type="file" 
-      accept="image/*"
-      className="hidden"
-      onChange={e=>{
-        const f=e.target.files[0];
-        if(f){
-          const r=new FileReader();
-          r.onload=ev=>setVolunteers(prev=>prev.map(v=>v.id===vol.id?{...v,photo:ev.target.result,scale:1,translateX:0,translateY:0}:v));
-          r.readAsDataURL(f);
-        }
-      }}
-    />
-  </label>
-)}
-
+                  <InteractivePhoto id={vol.id} src={vol.photo} scale={vol.scale} translateX={vol.translateX} translateY={vol.translateY} onUpdate={(id,s,x,y)=>setVolunteers(prev=>prev.map(v=>v.id===id?{...v,scale:s,translateX:x,translateY:y}:v))}/>
+                  {!vol.photo && <input type="file" accept="image/*" onChange={e=>{const f=e.target.files[0];if(f){const r=new FileReader();r.onload=ev=>setVolunteers(prev=>prev.map(v=>v.id===vol.id?{...v,photo:ev.target.result,scale:1,translateX:0,translateY:0}:v));r.readAsDataURL(f);}}} className="absolute inset-0 opacity-0 cursor-pointer z-30"/>}
                   {vol.photo && (
                     <label className="absolute top-1 left-1 no-print opacity-0 group-hover:opacity-100 transition-opacity p-2 bg-white/90 rounded-full text-indigo-600 cursor-pointer z-40 shadow-sm">
                       <Upload size={12}/>
