@@ -1520,7 +1520,7 @@ function InfinityScheduler({ onNotify }) {
 }
 
 // ─── INTERACTIVE TEXT ─────────────────────────────────────────────────────────
-const InteractiveText = ({ text, size, offsetY, onUpdate, className, style, placeholder, isEditable }) => {
+const InteractiveText = ({ text, size, offsetY, onUpdate, className, style, placeholder, isEditable, onEditChange }) => {
   const [dragging, setDragging] = useState(false);
   const startPos = useRef({ x: 0, y: 0 });
   const startVals = useRef({ size: 0, offset: 0 });
@@ -1552,12 +1552,21 @@ const InteractiveText = ({ text, size, offsetY, onUpdate, className, style, plac
         ${dragging ? 'opacity-100' : 'opacity-0 group-hover/t:opacity-60'} transition-opacity`}>
         {Math.round(size)}px
       </div>
-      {isEditable
-        ? <input type="text" value={text} onChange={isEditable} className="bg-transparent text-center w-full outline-none" onMouseDown={e=>e.stopPropagation()}/>
-        : <span>{text || placeholder}</span>}
+      {isEditable === true ? (
+        <input 
+          type="text" 
+          value={text} 
+          onChange={(e) => onEditChange?.(e.target.value)}
+          className="bg-transparent text-center w-full outline-none" 
+          onMouseDown={e=>e.stopPropagation()}
+        />
+      ) : (
+        <span>{text || placeholder}</span>
+      )}
     </div>
   );
 };
+
 
 // ─── INTERACTIVE PHOTO ────────────────────────────────────────────────────────
 const InteractivePhoto = ({ src, scale, translateX, translateY, onUpdate, id }) => {
@@ -1729,7 +1738,7 @@ function NameTagApp({ onNotify }) {
                           {page.type==='names' ? (
                             <div className="relative text-center w-full">
                               <div className="flex flex-col items-center justify-center leading-none">
-                                <InteractiveText text={nd.first} size={vol.nameSize||60} offsetY={vol.nameY||0} onUpdate={(s,o)=>handleInteractiveUpdate(vol.id,'name',s,o)} className="font-comic font-bold text-slate-800 whitespace-nowrap drop-shadow-sm"/>
+                                <InteractiveText text={nd.first} size={vol.nameSize||60} offsetY={vol.nameY||0} onUpdate={(s,o)=>handleInteractiveUpdate(vol.id,'name',s,o)} className="font-comic font-bold text-slate-800 whitespace-nowrap drop-shadow-sm" isEditable={false} />
                                 <InteractiveText text={nd.last} size={vol.surnameSize||12} offsetY={vol.surnameY||0} onUpdate={(s,o)=>handleInteractiveUpdate(vol.id,'surname',s,o)} className="font-comic font-black text-slate-900 uppercase whitespace-nowrap mt-1 drop-shadow-sm"/>
                               </div>
                               {side===1 && (
@@ -1852,8 +1861,25 @@ function CollageApp({ onNotify }) {
                   <button onClick={()=>moveVolunteer(idx,1)} disabled={idx===volunteers.length-1} className="p-1 bg-white text-indigo-600 rounded-full shadow-sm border border-indigo-50 hover:scale-110 disabled:opacity-30"><ChevronDown size={10}/></button>
                 </div>
                 <div className="relative w-full h-full min-h-0 mb-1 overflow-hidden rounded-xl bg-white border border-slate-100 shadow-sm flex items-center justify-center">
-                  <InteractivePhoto id={vol.id} src={vol.photo} scale={vol.scale} translateX={vol.translateX} translateY={vol.translateY} onUpdate={(id,s,x,y)=>setVolunteers(prev=>prev.map(v=>v.id===id?{...v,scale:s,translateX:x,translateY:y}:v))}/>
-                  {!vol.photo && <input type="file" accept="image/*" onChange={e=>{const f=e.target.files[0];if(f){const r=new FileReader();r.onload=ev=>setVolunteers(prev=>prev.map(v=>v.id===vol.id?{...v,photo:ev.target.result,scale:1,translateX:0,translateY:0}:v));r.readAsDataURL(f);}}} className="absolute inset-0 opacity-0 cursor-pointer z-30"/>}
+                  <InteractivePhoto id={vol.id} src={vol.photo} scale={vol.scale || 1} translateX={vol.translateX} translateY={vol.translateY} onUpdate={(id,s,x,y)=>setVolunteers(prev=>prev.map(v=>v.id===id?{...v,scale:s,translateX:x,translateY:y}:v))}/>
+              {!vol.photo && (
+  <label className="absolute inset-0 opacity-0 cursor-pointer z-30">
+    <input 
+      type="file" 
+      accept="image/*"
+      className="hidden"
+      onChange={e=>{
+        const f=e.target.files[0];
+        if(f){
+          const r=new FileReader();
+          r.onload=ev=>setVolunteers(prev=>prev.map(v=>v.id===vol.id?{...v,photo:ev.target.result,scale:1,translateX:0,translateY:0}:v));
+          r.readAsDataURL(f);
+        }
+      }}
+    />
+  </label>
+)}
+
                   {vol.photo && (
                     <label className="absolute top-1 left-1 no-print opacity-0 group-hover:opacity-100 transition-opacity p-2 bg-white/90 rounded-full text-indigo-600 cursor-pointer z-40 shadow-sm">
                       <Upload size={12}/>
