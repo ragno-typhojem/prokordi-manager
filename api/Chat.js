@@ -30,7 +30,7 @@ export default async function handler(req, res) {
   }
 
   const provider = GROQ_CONFIG; // default
-  const apiKey   = process.env[provider.keyEnv];
+  const apiKey = process.env.GROQ_API_KEY;
 
   if (!apiKey) {
     return res.status(500).json({
