@@ -23,20 +23,13 @@ const GROQ_CONFIG = {
   keyEnv: 'GROQ_API_KEY',
 };
 
-const GEMINI_CONFIG = {
-  // Gemini'nin OpenAI-uyumlu endpoint'i
-  url:    'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
-  model:  'gemini-2.5-flash-preview-04-17',
-  keyEnv: 'GEMINI_API_KEY',
-};
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  // Provider seç: env PROVIDER=gemini ise Gemini, yoksa Groq (varsayılan)
-  const provider = process.env.PROVIDER === 'gemini' ? GEMINI_CONFIG : GROQ_CONFIG;
+  const provider = GROQ_CONFIG; // default
   const apiKey   = process.env[provider.keyEnv];
 
   if (!apiKey) {
