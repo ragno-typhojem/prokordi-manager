@@ -1,21 +1,3 @@
-/**
- * Vercel Serverless Function — /api/chat
- *
- * ✅ TAMAMEN ÜCRETSİZ — Kredi kartı gerekmez
- * Groq API: https://console.groq.com → API Keys → Create
- * Model: llama-3.3-70b-versatile (GPT-4 kalitesinde, 315 token/saniye)
- *
- * Vercel Dashboard → Project → Settings → Environment Variables:
- *   GROQ_API_KEY = gsk_...
- *
- * Groq Ücretsiz Limitler (2026):
- *   - 30 istek/dakika
- *   - 14.400 token/gün
- *   - Kredi kartı YOK, süre sınırı YOK
- *
- * --- Alternatif: Google Gemini (daha cömert: 1.500 istek/gün) ---
- * PROVIDER=gemini olarak set edip GEMINI_API_KEY ekleyebilirsiniz.
- */
 
 const GROQ_CONFIG = {
   url:    'https://api.groq.com/openai/v1/chat/completions',
@@ -32,11 +14,6 @@ export default async function handler(req, res) {
   const provider = GROQ_CONFIG; // default
   const apiKey = process.env.GROQ_API_KEY;
 
-  if (!apiKey) {
-    return res.status(500).json({
-      error: `${provider.keyEnv} env değişkeni Vercel'de tanımlı değil. Dashboard → Settings → Environment Variables.`
-    });
-  }
 
   // Anthropic formatını → OpenAI formatına dönüştür
   const { system, messages, max_tokens } = req.body;
