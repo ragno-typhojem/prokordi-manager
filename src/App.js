@@ -363,13 +363,11 @@ FORMAT (her zaman bu şema):
     setLoading(true);
 
     try {
-      // ✅ API anahtarı Vercel env'de: ANTHROPIC_API_KEY
-      // Frontend sadece /api/chat proxy'sine istek atar — anahtar sızdırılmaz
+      // ✅ API rotasını garantiye almak için /api/chat yapıyoruz ve gereksiz model parametresini siliyoruz
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
           max_tokens: 1000,
           system: buildSystemPrompt(),
           messages: newMsgs.map(m => ({ role: m.role, content: m.content }))
@@ -393,7 +391,8 @@ FORMAT (her zaman bu şema):
     } catch (err) {
       setMessages([...newMsgs, {
         role: 'assistant',
-        content: `⚠️ ${err.message?.includes('ANTHROPIC_API_KEY') ? 'API anahtarı yapılandırılmamış. Vercel → Settings → Environment Variables → ANTHROPIC_API_KEY ekleyin.' : 'Bağlantı hatası. Lütfen tekrar deneyin.'}`
+        // ✅ Hata mesajını GROQ_API_KEY'e göre güncelledik
+        content: `⚠️ ${err.message?.includes('API_KEY') ? 'API anahtarı yapılandırılmamış. Vercel → Settings → Environment Variables → GROQ_API_KEY ekleyin.' : 'Bağlantı hatası: ' + err.message}`
       }]);
     } finally {
       setLoading(false);
