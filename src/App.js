@@ -523,16 +523,23 @@ const send = async () => {
       })
     });
 
-    const data = await res.json();
+    // 1. DÜZELTME: Yanıtı direkt JSON yapma, önce metin olarak al
+    const textRes = await res.text();
+    
+    let data;
+    try {
+      data = JSON.parse(textRes);
+    } catch (parseErr) {
+      // JSON'a çevrilemiyorsa HTML gelmiştir (Muhtemel Timeout/Vercel çökmesi)
+      throw new Error("Sunucudan geçersiz yanıt geldi (Zaman aşımı olabilir).");
+    }
+
     if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
 
-    // ✅ Groq/OpenAI formatı: { role: 'assistant', content: '...' }
-    // server.js → res.json(completion.choices[0].message) döndürüyor
     const raw = typeof data.content === 'string'
       ? data.content
       : data.content?.[0]?.text ?? '{"message":"Yanıt alınamadı.","actions":[]}';
 
-    // JSON parse — backtick veya markdown bloğu varsa temizle
     const cleaned = raw
       .replace(/```json\s*/gi, '')
       .replace(/```\s*/gi, '')
@@ -542,7 +549,6 @@ const send = async () => {
     try {
       parsed = JSON.parse(cleaned);
     } catch {
-      // JSON değilse düz metin olarak göster, aksiyon yok
       parsed = { message: raw, actions: [] };
     }
 
