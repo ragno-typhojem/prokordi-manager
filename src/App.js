@@ -500,31 +500,70 @@ FORMAT (SADECE JSON, backtick kullanma):
 {"message":"Türkçe yanıt","actions":[]}`;
   };
 
-  const send = async () => {
-    const text = input.trim();
-    if (!text || loading) return;
-    setInput('');
-    setRipple(true); setTimeout(()=>setRipple(false), 600);
-    const newMsgs = [...messages, { role:'user', content:text }];
-    setMessages(newMsgs);
-    setLoading(true);
+const send = async () => {
+  const text = input.trim();
+  if (!text || loading) return;
+
+  setInput('');
+  setRipple(true);
+  setTimeout(() => setRipple(false), 600);
+
+  const newMsgs = [...messages, { role: 'user', content: text }];
+  setMessages(newMsgs);
+  setLoading(true);
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        max_tokens: 1200,
+        system: buildSystemPrompt(),
+        messages: newMsgs.map(m => ({ role: m.role, content: m.content }))
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+
+    // ✅ Groq/OpenAI formatı: { role: 'assistant', content: '...' }
+    // server.js → res.json(completion.choices[0].message) döndürüyor
+    const raw = typeof data.content === 'string'
+      ? data.content
+      : data.content?.[0]?.text ?? '{"message":"Yanıt alınamadı.","actions":[]}';
+
+    // JSON parse — backtick veya markdown bloğu varsa temizle
+    const cleaned = raw
+      .replace(/```json\s*/gi, '')
+      .replace(/```\s*/gi, '')
+      .trim();
+
+    let parsed;
     try {
-      const res = await fetch("/api/chat", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ max_tokens:1200, system:buildSystemPrompt(), messages:newMsgs.map(m=>({role:m.role,content:m.content})) })
-      });
-      const data = await res.json();
-      if(!res.ok) throw new Error(data?.error||`HTTP ${res.status}`);
-      const raw = data.content?.[0]?.text || '{"message":"Bir hata oluştu.","actions":[]}';
-      let parsed;
-      try { parsed = JSON.parse(raw.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim()); }
-      catch { parsed = { message: raw, actions: [] }; }
-      setMessages([...newMsgs, { role:'assistant', content:parsed.message }]);
-      if(parsed.actions?.length) parsed.actions.forEach(a => onAction(a));
-    } catch(err) {
-      setMessages([...newMsgs, { role:'assistant', content:`⚠️ ${err.message?.includes('API_KEY')?'GROQ_API_KEY yapılandırılmamış.':'Bağlantı hatası: '+err.message}` }]);
-    } finally { setLoading(false); }
-  };
+      parsed = JSON.parse(cleaned);
+    } catch {
+      // JSON değilse düz metin olarak göster, aksiyon yok
+      parsed = { message: raw, actions: [] };
+    }
+
+    setMessages([...newMsgs, { role: 'assistant', content: parsed.message || raw }]);
+
+    if (Array.isArray(parsed.actions) && parsed.actions.length > 0) {
+      parsed.actions.forEach(a => onAction(a));
+    }
+
+  } catch (err) {
+    const isKeyErr = err.message?.includes('API_KEY') || err.message?.includes('401');
+    setMessages([...newMsgs, {
+      role: 'assistant',
+      content: isKeyErr
+        ? '⚠️ GROQ_API_KEY yapılandırılmamış veya geçersiz.'
+        : `⚠️ Bağlantı hatası: ${err.message}`
+    }]);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const statusLabel = loading
     ? <span style={{background:'linear-gradient(90deg,#6366f1,#8b5cf6,#06b6d4)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundSize:'200%',animation:'liquid-rainbow 2s linear infinite'}}>Düşünüyor…</span>
