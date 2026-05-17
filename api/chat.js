@@ -1,23 +1,23 @@
-import express from 'express';
 import Groq from 'groq-sdk';
-import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname  = path.dirname(__filename);
-
-const app  = express();
-const PORT = process.env.PORT || 3001;
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-app.use(express.json({ limit: '10mb' }));
+export default async function handler(req, res) {
+  // CORS headers (gerekirse)
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-// ✅ API route'ları ÖNCE tanımla — static'ten önce!
-app.post('/api/chat', async (req, res) => {
+  // Preflight
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  // Sadece POST kabul et
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
   try {
     const { messages, system, max_tokens = 1500 } = req.body;
 
@@ -36,26 +36,10 @@ app.post('/api/chat', async (req, res) => {
       temperature: 0.7
     });
 
-    // OpenAI/Groq formatı: { role, content } — content düz string
-    res.json(completion.choices[0].message);
+    return res.status(200).json(completion.choices[0].message);
 
   } catch (error) {
     console.error('Groq API Error:', error);
-    res.status(500).json({ error: error.message || 'Internal server error' });
+    return res.status(500).json({ error: error.message || 'Internal server error' });
   }
-});
-
-// ✅ Static SONRA — API'yi override etmesin
-app.use(express.static(path.join(__dirname, 'build')));
-
-// React SPA fallback — API dışı tüm route'lar için
-app.get('*', (req, res) => {
-  if (req.path.startsWith('/api')) {
-    return res.status(404).json({ error: 'API endpoint not found' });
-  }
-  res.sendFile(path.join(__dirname, 'build', 'index.html'));
-});
-
-app.listen(PORT, () => {
-  console.log(`✅ Server: http://localhost:${PORT}`);
-});
+}
