@@ -1,27 +1,8 @@
 // CommonJS formatı — Vercel ile en uyumlu
 const Groq = require('groq-sdk');
 
-// Vercel'in req.body'yi bozmasını engellemek veya ham veriyi yakalamak için yardımcı fonksiyon
-async function getRequestBody(req) {
-  if (req.body && typeof req.body === 'object') {
-    return req.body;
-  }
-  if (typeof req.body === 'string') {
-    try { return JSON.parse(req.body); } catch { return {}; }
-  }
-  
-  // Eğer req.body tamamen boş veya stream halindeyse:
-  return new Promise((resolve) => {
-    let bodyStr = '';
-    req.on('data', chunk => { bodyStr += chunk; });
-    req.on('end', () => {
-      try { resolve(JSON.parse(bodyStr)); } catch { resolve({}); }
-    });
-  });
-}
-
 module.exports = async function handler(req, res) {
-  // CORS
+  // CORS Ayarları
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -36,11 +17,21 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    // ✅ Güvenli body parse
-    const body = await getRequestBody(req);
-    const { messages, system, max_tokens = 1500 } = body;
+    // ✅ Vercel için en güvenli body okuma yöntemi
+    let body = req.body;
+    if (typeof body === 'string') {
+      try {
+        body = JSON.parse(body);
+      } catch (e) {
+        return res.status(400).json({ error: 'Invalid JSON payload' });
+      }
+    }
 
-    const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+    if (!body || typeof body !== 'object') {
+      return res.status(400).json({ error: 'Request body must be a valid object' });
+    }
+
+    const { messages, system, max_tokens = 1500 } = body;
 
     const messageList = [];
     if (system) messageList.push({ role: 'system', content: system });
@@ -52,6 +43,8 @@ module.exports = async function handler(req, res) {
     if (messageList.length === 0 || (messageList.length === 1 && system)) {
       return res.status(400).json({ error: 'No user messages provided' });
     }
+
+    const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
