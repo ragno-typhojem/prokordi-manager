@@ -1,5 +1,5 @@
 /* eslint-disable */
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Calendar, Users, FileText, Image as ImageIcon, Printer,
   Plus, Trash2, Upload, X, CheckCircle2, BookOpen, GraduationCap,
@@ -12,35 +12,20 @@ import {
   UserCheck, Layers, Star, ArrowRight
 } from 'lucide-react';
 
-// ─── DATABASE ────────────────────────────────────────────────────────────────
-const DB_KEYS = {
-  ACTIVITIES: 'activities_v30',
-  VOLUNTEERS: 'shared_volunteers_v30',
-  TIMESLOTS:  'timeSlots_v30',
-  CLASSES:    'classes_v30',
-  NAMETAG_VOLUNTEERS: 'nametags_v30',
-  COLLAGE_VOLUNTEERS: 'collage_v30',
-  CHAT_HISTORY: 'balkiz_chat_v1',
-  DARK_MODE: 'prokdi_dark_v1'
-};
-
-const db = {
-  save: (key, data) => { try { localStorage.setItem(key, JSON.stringify(data)); return true; } catch { return false; } },
-  load: (key, def)  => { try { const d = localStorage.getItem(key); return d ? JSON.parse(d) : def; } catch { return def; } },
-  clearAll: () => { Object.values(DB_KEYS).forEach(k => localStorage.removeItem(k)); }
-};
+// ─── ÇEKİRDEK ────────────────────────────────────────────────────────────────
+import { db, DB_KEYS } from './lib/db';
+import { uid as uuid, norm } from './lib/util';
+import { calculateConflicts, distribute } from './lib/engine';
+import { askBalkiz, applyActions } from './lib/ai';
+import { readFile, parseAny, toStatePatch } from './lib/importer';
 
 const syncVolunteers = (src = null) => {
-  try {
-    const v = src || db.load(DB_KEYS.VOLUNTEERS, []);
-    db.save(DB_KEYS.VOLUNTEERS, v);
-    db.save(DB_KEYS.NAMETAG_VOLUNTEERS, v);
-    db.save(DB_KEYS.COLLAGE_VOLUNTEERS, v);
-    return v;
-  } catch { return []; }
+  const v = src || db.load(DB_KEYS.VOLUNTEERS, []);
+  db.save(DB_KEYS.VOLUNTEERS, v);
+  db.save(DB_KEYS.NAMETAG_VOLUNTEERS, v);
+  db.save(DB_KEYS.COLLAGE_VOLUNTEERS, v);
+  return v;
 };
-
-const uuid = () => Math.random().toString(36).substr(2, 9);
 
 const IMAGES = {
   NAME_BG:     "https://i.ibb.co/9Hcchfq8/ntaraf.png",
@@ -373,11 +358,11 @@ const PromptModal = ({ isOpen, title, defaultValue, onConfirm, onCancel }) => {
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-fadeIn">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 border border-slate-100 animate-scaleIn">
-        <h3 className="text-base font-700 text-slate-800 mb-4">{title}</h3>
+      <div className="rounded-2xl shadow-2xl max-w-sm w-full p-6 border animate-scaleIn dk-card dk-border">
+        <h3 className="text-base font-700 dk-text mb-4">{title}</h3>
         <input autoFocus type="text" value={val} onChange={e => setVal(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && onConfirm(val)}
-          className="w-full border-2 border-slate-200 p-3 rounded-xl text-sm font-500 text-slate-700 outline-none focus:border-indigo-400 transition-colors mb-4"/>
+          className="w-full border-2 p-3 rounded-xl text-sm font-500 outline-none focus:border-indigo-400 transition-colors mb-4 dk-input dk-border"/>
         <div className="flex justify-end gap-2">
           <button onClick={onCancel} className="px-4 py-2 rounded-xl text-sm font-600 bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">İptal</button>
           <button onClick={() => onConfirm(val)} className="px-4 py-2 rounded-xl text-sm font-700 text-white bg-indigo-600 hover:bg-indigo-700 transition-colors">Kaydet</button>
@@ -441,135 +426,74 @@ const JarvisBrain = ({ active }) => {
 };
 
 // ─── BALKIZ AI CHAT ───────────────────────────────────────────────────────────
-function BalkizAIChat({ appState, onAction, warnings = [], dark }) {
-  const INITIAL = [{ role:'assistant', content:'Merhaba! Ben B.A.L.K.I.Z. 🧠\nProgram oluşturma, güncelleme, gönüllü & etkinlik atama gibi tüm işlemler için doğal dilde yazın.\n\nÖrn: "09:00-09:40 arasında 1-A\'ya Origami ekle, Eda lider olsun" ya da "Tüm zorunlu olmayanları sil"' }];
+const CHIPS = [
+  'Programı doldur',
+  'Boş kalan yerleri doldur',
+  'Zorunlular kalsın, gerisini sil',
+  'Standart saat şablonunu yükle',
+];
+
+function BalkizAIChat({ appState, onApply, onImport, warnings = [], dark }) {
+  const INITIAL = [{ role:'assistant', content:'Merhaba! Ben B.A.L.K.I.Z. 🧠\nNe istediğinizi normal Türkçe yazın — gerisini ben hallederim.\n\n• "3. ders 4-A\'ya Kimya koy, Mehmet anlatsın"\n• "Ayşe\'yi ekle, origami ve drama yapabilir"\n• "boş kalan yerleri doldur"\n\nExcel/CSV dosyasını buraya sürükleyin ya da tabloyu doğrudan yapıştırın — türünü kendim anlarım.' }];
   const [messages, setMessages] = useState(() => db.load(DB_KEYS.CHAT_HISTORY, INITIAL));
   const [input, setInput]       = useState('');
   const [loading, setLoading]   = useState(false);
   const [isOpen, setIsOpen]     = useState(true);
-  const [ripple, setRipple]     = useState(false);
+  const [dropping, setDropping] = useState(false);
   const endRef   = useRef(null);
-  const inputRef = useRef(null);
+  const abortRef = useRef(null);
 
-  useEffect(() => { db.save(DB_KEYS.CHAT_HISTORY, messages); }, [messages]);
-  useEffect(() => { if(endRef.current) endRef.current.scrollIntoView({ behavior:'smooth' }); }, [messages, loading]);
+  useEffect(() => { db.save(DB_KEYS.CHAT_HISTORY, messages.slice(-40)); }, [messages]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior:'smooth', block:'nearest' }); }, [messages, loading]);
+  useEffect(() => () => abortRef.current?.abort(), []);
 
-  const buildSystemPrompt = () => {
-    const { activities=[], volunteers=[], classes=[], timeSlots=[] } = appState || {};
-    const scheduleStr = classes.map(c => {
-      const slots = Object.entries(c.schedule||{}).map(([slotId, s]) => {
-        const ts = timeSlots.find(t=>t.id===slotId);
-        return `${ts?.start||'?'}-${ts?.end||'?'}:${s.name||'BOŞ'}(${s.lead||'-'})`;
-      }).join(', ');
-      return `${c.name}[${slots||'boş'}]`;
-    }).join(' | ');
+  const push = (m) => setMessages(c => [...c, m]);
 
-    return `Sen B.A.L.K.I.Z. (Bilgisayar Destekli Lojistik Koordinasyon İzleme Zekası) isimli ProkordiManager asistanısın.
+  const send = useCallback(async (raw) => {
+    const text = String(raw ?? input).trim();
+    if (!text || loading) return;
+    setInput('');
+    const history = messages;
+    push({ role:'user', content:text });
+    setLoading(true);
+    abortRef.current?.abort();
+    abortRef.current = new AbortController();
+    try {
+      const { message, actions } = await askBalkiz({
+        text, history, state: appState, warnings, signal: abortRef.current.signal,
+      });
+      let log = [];
+      if (actions.length) {
+        const r = applyActions(appState, actions);
+        log = r.log;
+        onApply(r.state);
+      }
+      push({ role:'assistant', content: message + (log.length ? '\n' + log.map(l => '  ' + l).join('\n') : '') });
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      const keyErr = /API_KEY|401|tanımlı değil/i.test(err.message || '');
+      push({ role:'assistant', content: keyErr ? '⚠️ GROQ_API_KEY yapılandırılmamış veya geçersiz.' : `⚠️ ${err.message}` });
+    } finally { setLoading(false); }
+  }, [input, loading, messages, appState, warnings, onApply]);
 
-MEVCUT DURUM:
-Etkinlikler(${activities.length}): ${JSON.stringify(activities.map(a=>({id:a.id,name:a.name,isMust:a.isMust,boxCount:a.boxCount,grades:a.allowedGrades})))}
-Gönüllüler(${volunteers.length}): ${JSON.stringify(volunteers.map(v=>({id:v.id,name:v.name,caps:v.capabilities})))}
-Sınıflar(${classes.length}): ${classes.map(c=>c.name).join(', ')}
-Zaman Dilimleri(${timeSlots.length}): ${timeSlots.map(t=>`${t.id}:${t.start}-${t.end}(${t.type})`).join(', ')}
-Mevcut Program: ${scheduleStr}
-Uyarılar: ${warnings.length} adet
-
-KULLANABİLECEĞİN KOMUTLAR:
-add_volunteer: {type:"add_volunteer",name:"Ad Soyad",capabilities:[activityId]}
-remove_volunteer: {type:"remove_volunteer",id:"vol_id"}
-update_volunteer_caps: {type:"update_volunteer_caps",id:"vol_id",capabilities:[actId,...]}
-add_activity: {type:"add_activity",name:"...",isMust:false,boxCount:1,allowedGrades:[0,1,2,3,4,5,6,7,8]}
-remove_activity: {type:"remove_activity",id:"act_id"}
-update_activity: {type:"update_activity",id:"act_id",name:"...",isMust:true,boxCount:3}
-add_class: {type:"add_class",name:"..."}
-remove_class: {type:"remove_class",id:"cls_id"}
-distribute: {type:"distribute"}
-clear_schedule: {type:"clear_schedule"}
-clear_non_mandatory: {type:"clear_non_mandatory"}
-update_slot: {type:"update_slot",classId:"cls_id",slotId:"t1",activityId:"act_id",activityName:"...",leadId:"vol_id",leadName:"..."}
-delete_slot: {type:"delete_slot",classId:"cls_id",slotId:"t1"}
-assign_volunteer_activity: {type:"assign_volunteer_activity",volunteerName:"...",activityName:"..."}
-add_timeslot: {type:"add_timeslot",duration:40,slotType:"lesson"}
-load_template: {type:"load_template"}
-
-ZAMAN PARSING: "09:00-09:40" → slotId için timeSlots içinde eşleşen slot bul. "İlk ders"→ilk lesson slot. "Öğleden sonra"→12:30'dan sonraki slotlar. Kesin slotId kullan.
-PROGRAM GÜNCELLEME: Yeni program yazarken önce clear_schedule ile eskisini sil, sonra distribute et ya da update_slot ile tek tek ata. Eski slotları silmeyi unutma!
-ÇOKLU İŞLEM: actions dizisinde birden fazla komut kullanabilirsin.
-
-FORMAT (SADECE JSON, backtick kullanma):
-{"message":"Türkçe yanıt","actions":[]}`;
+  // Excel'den kopyala-yapıştır: 3+ satır ya da sekmeli içerik → AI'ya gitmeden içe aktar
+  const onPaste = (e) => {
+    const t = e.clipboardData?.getData('text') || '';
+    const lines = t.trim().split(/\r?\n/).filter(Boolean);
+    if (lines.length >= 3 || (lines.length >= 2 && t.includes('\t'))) {
+      e.preventDefault();
+      onImport(t).then(sum => push({ role:'assistant', content:`⇩ Yapıştırılan veri içe aktarıldı — ${sum}` }))
+                 .catch(err => push({ role:'assistant', content:`⚠️ İçe aktarılamadı: ${err.message}` }));
+    }
   };
 
-const send = async () => {
-  const text = input.trim();
-  if (!text || loading) return;
-
-  setInput('');
-  setRipple(true);
-  setTimeout(() => setRipple(false), 600);
-
-  const newMsgs = [...messages, { role: 'user', content: text }];
-  setMessages(newMsgs);
-  setLoading(true);
-
-  try {
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        max_tokens: 1200,
-        system: buildSystemPrompt(),
-        messages: newMsgs.map(m => ({ role: m.role, content: m.content }))
-      })
-    });
-
-    // 1. DÜZELTME: Yanıtı direkt JSON yapma, önce metin olarak al
-    const textRes = await res.text();
-    
-    let data;
-    try {
-      data = JSON.parse(textRes);
-    } catch (parseErr) {
-      // JSON'a çevrilemiyorsa HTML gelmiştir (Muhtemel Timeout/Vercel çökmesi)
-      throw new Error("Sunucudan geçersiz yanıt geldi (Zaman aşımı olabilir).");
-    }
-
-    if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-
-    const raw = typeof data.content === 'string'
-      ? data.content
-      : data.content?.[0]?.text ?? '{"message":"Yanıt alınamadı.","actions":[]}';
-
-    const cleaned = raw
-      .replace(/```json\s*/gi, '')
-      .replace(/```\s*/gi, '')
-      .trim();
-
-    let parsed;
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch {
-      parsed = { message: raw, actions: [] };
-    }
-
-    setMessages([...newMsgs, { role: 'assistant', content: parsed.message || raw }]);
-
-    if (Array.isArray(parsed.actions) && parsed.actions.length > 0) {
-      parsed.actions.forEach(a => onAction(a));
-    }
-
-  } catch (err) {
-    const isKeyErr = err.message?.includes('API_KEY') || err.message?.includes('401');
-    setMessages([...newMsgs, {
-      role: 'assistant',
-      content: isKeyErr
-        ? '⚠️ GROQ_API_KEY yapılandırılmamış veya geçersiz.'
-        : `⚠️ Bağlantı hatası: ${err.message}`
-    }]);
-  } finally {
-    setLoading(false);
-  }
-};
+  const onDrop = (e) => {
+    e.preventDefault(); setDropping(false);
+    const f = e.dataTransfer?.files?.[0];
+    if (!f) return;
+    onImport(f).then(sum => push({ role:'assistant', content:`⇩ ${f.name} içe aktarıldı — ${sum}` }))
+               .catch(err => push({ role:'assistant', content:`⚠️ ${f.name}: ${err.message}` }));
+  };
 
   const statusLabel = loading
     ? <span style={{background:'linear-gradient(90deg,#6366f1,#8b5cf6,#06b6d4)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundSize:'200%',animation:'liquid-rainbow 2s linear infinite'}}>Düşünüyor…</span>
@@ -577,17 +501,19 @@ const send = async () => {
       ? <span className="text-amber-500">{warnings.length} uyarı</span>
       : <span className="text-emerald-500">Hazır</span>;
 
-  const bgClr = dark ? 'rgba(15,23,42,.85)' : 'rgba(255,255,255,.72)';
   const msgBg = dark ? 'rgba(15,23,42,.6)' : 'rgba(255,255,255,.5)';
 
   return (
-    <div className="no-print mb-5" style={{ position:'relative' }}>
+    <div className="no-print mb-5" style={{ position:'relative' }}
+      onDragOver={e=>{e.preventDefault();setDropping(true);}}
+      onDragLeave={()=>setDropping(false)} onDrop={onDrop}>
       <div aria-hidden style={{ position:'absolute', inset:0, overflow:'hidden', borderRadius:'1rem', pointerEvents:'none', zIndex:0 }}>
         <div style={{ position:'absolute', top:'-30%', left:'-10%', width:'55%', height:'180%', background:'radial-gradient(circle,rgba(99,102,241,.1) 0%,transparent 70%)', animation:'orb-drift-1 8s ease-in-out infinite', borderRadius:'50%' }}/>
         <div style={{ position:'absolute', top:'20%', right:'-15%', width:'50%', height:'160%', background:'radial-gradient(circle,rgba(139,92,246,.08) 0%,transparent 70%)', animation:'orb-drift-2 10s ease-in-out infinite', borderRadius:'50%' }}/>
         <div style={{ position:'absolute', bottom:'-20%', left:'30%', width:'40%', height:'120%', background:'radial-gradient(circle,rgba(6,182,212,.07) 0%,transparent 70%)', animation:'orb-drift-3 12s ease-in-out infinite', borderRadius:'50%' }}/>
       </div>
-      <div className="glass-panel" style={{ position:'relative', zIndex:1, borderRadius:'1.25rem', overflow:'hidden' }}>
+
+      <div className="glass-panel" style={{ position:'relative', zIndex:1, borderRadius:'1.25rem', overflow:'hidden', outline: dropping ? '2px dashed #6366f1' : 'none', outlineOffset:-4 }}>
         {/* Header */}
         <div style={{ position:'relative', overflow:'hidden', padding:'12px 18px', borderBottom:`1px solid ${dark?'rgba(255,255,255,.08)':'rgba(255,255,255,.4)'}`, background:'linear-gradient(135deg,rgba(99,102,241,.06) 0%,rgba(139,92,246,.04) 50%,rgba(6,182,212,.06) 100%)' }}>
           <div className="liquid-shimmer" style={{ position:'absolute', inset:0, pointerEvents:'none' }}/>
@@ -607,7 +533,7 @@ const send = async () => {
                 style={{ padding:6, borderRadius:8, border:'none', background:'transparent', color:'#94a3b8', cursor:'pointer', display:'flex' }}>
                 <RefreshCw size={13}/>
               </button>
-              <button onClick={()=>setIsOpen(v=>!v)}
+              <button onClick={()=>setIsOpen(v=>!v)} title={isOpen?'Küçült':'Aç'}
                 style={{ padding:6, borderRadius:8, border:'none', background:'transparent', color:'#94a3b8', cursor:'pointer', display:'flex' }}>
                 {isOpen?<ChevronUp size={14}/>:<ChevronDown size={14}/>}
               </button>
@@ -617,21 +543,21 @@ const send = async () => {
 
         {isOpen && (
           <>
-            <div className="custom-scroll" style={{ height:220, overflowY:'auto', padding:'14px', background:msgBg, backdropFilter:'blur(8px)', display:'flex', flexDirection:'column', gap:9 }}>
+            <div className="custom-scroll" style={{ height:240, overflowY:'auto', padding:'14px', background:msgBg, backdropFilter:'blur(8px)', display:'flex', flexDirection:'column', gap:9 }}>
               {messages.map((m,i)=>(
-                <div key={i} style={{ display:'flex', gap:8, justifyContent:m.role==='user'?'flex-end':'flex-start', animation:'message-spring .4s cubic-bezier(0.34,1.3,.64,1) both', animationDelay:`${i*.03}s` }}>
+                <div key={i} style={{ display:'flex', gap:8, justifyContent:m.role==='user'?'flex-end':'flex-start' }} className="animate-message">
                   {m.role==='assistant' && (
                     <div style={{ width:24, height:24, borderRadius:'50%', background:'linear-gradient(135deg,#e0e7ff,#ddd6fe)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, marginTop:2 }}>
                       <Bot size={12} style={{ color:'#6366f1' }}/>
                     </div>
                   )}
-                  <div className={m.role==='user'?'chat-user':'chat-bot'} style={{ maxWidth:'80%', padding:'9px 13px', fontSize:13, lineHeight:1.6, whiteSpace:'pre-wrap' }}>
+                  <div className={m.role==='user'?'chat-user':'chat-bot'} style={{ maxWidth:'82%', padding:'9px 13px', fontSize:13, lineHeight:1.6, whiteSpace:'pre-wrap' }}>
                     {m.content}
                   </div>
                 </div>
               ))}
               {loading && (
-                <div style={{ display:'flex', gap:8, justifyContent:'flex-start', animation:'message-spring .3s ease both' }}>
+                <div style={{ display:'flex', gap:8, justifyContent:'flex-start' }} className="animate-message">
                   <div style={{ width:24, height:24, borderRadius:'50%', background:'linear-gradient(135deg,#e0e7ff,#ddd6fe)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                     <Bot size={12} style={{ color:'#6366f1' }}/>
                   </div>
@@ -643,7 +569,7 @@ const send = async () => {
                 </div>
               )}
               {!loading && warnings.length > 0 && (
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(190px,1fr))', gap:5, paddingTop:3 }}>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:5, paddingTop:3 }}>
                   {warnings.slice(0,4).map((w,i)=>(
                     <div key={i} style={{ fontSize:11, fontWeight:500, color:'#92400e', background:'rgba(254,243,199,.8)', border:'1px solid rgba(253,230,138,.6)', borderRadius:8, padding:'5px 9px', display:'flex', alignItems:'flex-start', gap:5 }}>
                       <AlertTriangle size={11} style={{ flexShrink:0, marginTop:1 }}/> {w.msg}
@@ -654,17 +580,40 @@ const send = async () => {
               )}
               <div ref={endRef}/>
             </div>
-            <div style={{ borderTop:`1px solid ${dark?'rgba(255,255,255,.08)':'rgba(255,255,255,.4)'}`, padding:'9px 11px', background:dark?'rgba(15,23,42,.7)':'rgba(248,250,252,.7)', backdropFilter:'blur(8px)', display:'flex', gap:7 }}>
-              <input ref={inputRef} value={input} onChange={e=>setInput(e.target.value)}
-                onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&send()}
-                placeholder="09:00-09:40 arasında 1-A'ya Origami ekle, Eda lider olsun…"
+
+            {/* Hızlı komutlar */}
+            <div style={{ display:'flex', gap:6, flexWrap:'wrap', padding:'8px 11px 0', background:dark?'rgba(15,23,42,.7)':'rgba(248,250,252,.7)' }}>
+              {CHIPS.map(c=>(
+                <button key={c} onClick={()=>send(c)} disabled={loading}
+                  style={{ fontSize:11, fontWeight:600, padding:'4px 10px', borderRadius:99, cursor:loading?'not-allowed':'pointer',
+                    border:`1px solid ${dark?'rgba(99,102,241,.35)':'rgba(99,102,241,.25)'}`,
+                    background:dark?'rgba(99,102,241,.12)':'rgba(99,102,241,.07)', color:dark?'#a5b4fc':'#4f46e5', opacity:loading?.5:1 }}>
+                  {c}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ borderTop:`1px solid ${dark?'rgba(255,255,255,.08)':'rgba(255,255,255,.4)'}`, padding:'9px 11px', background:dark?'rgba(15,23,42,.7)':'rgba(248,250,252,.7)', backdropFilter:'blur(8px)', display:'flex', gap:7, marginTop:8 }}>
+              <label title="Excel / CSV yükle"
+                style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:'9px 11px', borderRadius:11, cursor:'pointer', color:'#6366f1',
+                  background:dark?'rgba(99,102,241,.15)':'rgba(99,102,241,.08)', border:`1.5px solid ${dark?'rgba(99,102,241,.3)':'rgba(99,102,241,.2)'}` }}>
+                <FileSpreadsheet size={15}/>
+                <input type="file" accept=".xlsx,.xlsm,.csv,.txt,.tsv" style={{ display:'none' }} onChange={e=>{
+                  const f=e.target.files?.[0]; e.target.value='';
+                  if(f) onImport(f).then(s=>push({role:'assistant',content:`⇩ ${f.name} içe aktarıldı — ${s}`}))
+                                   .catch(err=>push({role:'assistant',content:`⚠️ ${f.name}: ${err.message}`}));
+                }}/>
+              </label>
+              <input value={input} onChange={e=>setInput(e.target.value)} onPaste={onPaste}
+                onKeyDown={e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); send(); } }}
+                placeholder="Ne yapmamı istersiniz? — ya da Excel tablosunu yapıştırın"
                 style={{ flex:1, fontSize:13, background:dark?'rgba(30,41,59,.8)':'rgba(255,255,255,.8)', border:`1.5px solid ${dark?'rgba(51,65,85,.8)':'rgba(226,232,240,.8)'}`, borderRadius:11, padding:'9px 14px', outline:'none', fontFamily:'inherit', color:dark?'#e2e8f0':'#334155', backdropFilter:'blur(8px)', transition:'border-color .2s' }}
                 onFocus={e=>{ e.target.style.borderColor='rgba(99,102,241,.5)'; }}
                 onBlur={e=>{ e.target.style.borderColor=dark?'rgba(51,65,85,.8)':'rgba(226,232,240,.8)'; }}/>
-              <button onClick={send} disabled={loading||!input.trim()}
-                style={{ position:'relative', overflow:'hidden', padding:'9px 13px', borderRadius:11, border:'none', cursor:loading||!input.trim()?'not-allowed':'pointer', background:loading||!input.trim()?'rgba(99,102,241,.35)':'linear-gradient(135deg,#6366f1,#8b5cf6)', color:'white', display:'flex', alignItems:'center', justifyContent:'center', transition:'all .2s', boxShadow:loading||!input.trim()?'none':'0 2px 12px rgba(99,102,241,.35)' }}>
-                {ripple && <span style={{ position:'absolute', inset:0, background:'rgba(255,255,255,.3)', borderRadius:11, animation:'surface-ripple .6s ease-out both' }}/>}
-                {loading ? <RefreshCw size={15} style={{ animation:'spinSlow .8s linear infinite' }}/> : <Send size={15}/>}
+              <button onClick={()=>loading?abortRef.current?.abort():send()} disabled={!loading&&!input.trim()}
+                title={loading?'Durdur':'Gönder'}
+                style={{ position:'relative', overflow:'hidden', padding:'9px 13px', borderRadius:11, border:'none', cursor:(!loading&&!input.trim())?'not-allowed':'pointer', background:(!loading&&!input.trim())?'rgba(99,102,241,.35)':'linear-gradient(135deg,#6366f1,#8b5cf6)', color:'white', display:'flex', alignItems:'center', justifyContent:'center', transition:'all .2s', boxShadow:(!loading&&!input.trim())?'none':'0 2px 12px rgba(99,102,241,.35)' }}>
+                {loading ? <X size={15}/> : <Send size={15}/>}
               </button>
             </div>
           </>
@@ -691,18 +640,11 @@ function InfinityScheduler({ onNotify, dark }) {
   const [activeView, setActiveView] = useState('view');
   const [confirmModal, setConfirmModal] = useState({ isOpen: false });
 
-  const LOGIC_CONFIG = {
-    primaryBlacklist:    ['kimya', 'fizik', 'robot', 'yapay zeka', 'geleceğe mektup'],
-    primaryWhitelist:    ['yaratıcı drama', 'origami', 'yüz boyama', 'pino mino', 'müzik', 'resim'],
-    middleSchoolPreferred: ['kimya', 'fizik', 'göremediğimiz canavarlar', 'fen', 'matematik', 'robot', 'masa deneyleri', 'vr', 'müzik', 'edebiyat']
-  };
-
   const [activities, setActivities] = useState(() => db.load(DB_KEYS.ACTIVITIES, []));
   const [volunteers, setVolunteers] = useState(() => db.load(DB_KEYS.VOLUNTEERS, []));
   const [timeSlots,  setTimeSlots]  = useState(() => db.load(DB_KEYS.TIMESLOTS, []));
   const [classes,    setClasses]    = useState(() => db.load(DB_KEYS.CLASSES, []));
 
-  const [warnings,       setWarnings]       = useState([]);
   const [aiState,        setAiState]        = useState('idle');
   const [hasDistributed, setHasDistributed] = useState(false);
   const [autoGenStep,    setAutoGenStep]    = useState('');
@@ -710,151 +652,59 @@ function InfinityScheduler({ onNotify, dark }) {
   const [bulkModalOpen,  setBulkModalOpen]  = useState(false);
   const [bulkText,       setBulkText]       = useState('');
   const [quickSlot,      setQuickSlot]      = useState(null); // { clsId, slotId }
-  const [excelImportMode, setExcelImportMode] = useState(false);
 
   const dragItem    = useRef();
   const fileInputRef= useRef(null);
-  const excelRef    = useRef(null);
 
   useEffect(() => { db.save(DB_KEYS.ACTIVITIES, activities); }, [activities]);
   useEffect(() => { db.save(DB_KEYS.VOLUNTEERS, volunteers); syncVolunteers(volunteers); }, [volunteers]);
   useEffect(() => { db.save(DB_KEYS.TIMESLOTS,  timeSlots);  }, [timeSlots]);
   useEffect(() => { db.save(DB_KEYS.CLASSES,    classes);    }, [classes]);
 
-  const detectGrade = cls => {
-    if (!cls) return 0;
-    const s = cls.toString().toLowerCase();
-    if (s.includes('ana') || s.includes('kreş')) return 0;
-    const m = s.match(/(\d+)/);
-    return m ? parseInt(m[0]) : 0;
-  };
-  const normalize = t => t ? t.toLocaleLowerCase('tr').trim() : '';
+  // ── ÇAKIŞMALAR (useMemo: her render'da değil, yalnızca veri değişince) ────
+  const warnings = useMemo(
+    () => calculateConflicts({ activities, volunteers, timeSlots, classes }),
+    [activities, volunteers, timeSlots, classes]
+  );
 
-  // ── CONFLICT CALCULATOR ──────────────────────────────────────────────────
-  const calculateConflicts = useCallback(() => {
-    const warns = [];
-    const lessonSlots = timeSlots.filter(t => t.type === 'lesson');
-    if (classes.every(c => Object.keys(c.schedule||{}).length === 0)) return [];
+  const appState = useMemo(
+    () => ({ activities, volunteers, timeSlots, classes }),
+    [activities, volunteers, timeSlots, classes]
+  );
 
-    classes.forEach(cls => {
-      const grade = detectGrade(cls.name);
-      const actCounts = {}, volCounts = {};
-      Object.entries(cls.schedule||{}).forEach(([, slot]) => {
-        if (!slot || slot.activityId === 'NO_CLASS') return;
-        const act = activities.find(a => a.id === slot.activityId);
-        if (act) {
-          if (act.allowedGrades?.length > 0 && !act.allowedGrades.includes(grade))
-            warns.push({ type:'protocol', msg:`Seviye: ${cls.name} → "${act.name}" uygun değil.` });
-          else {
-            const n = normalize(act.name);
-            if (grade > 0 && grade <= 4 && LOGIC_CONFIG.primaryBlacklist.some(b => n.includes(b)))
-              warns.push({ type:'pedagoji', msg:`Pedagoji: ${cls.name} için "${slot.name}" ağır.` });
-          }
-        }
-        if (slot.activityId) actCounts[slot.activityId] = (actCounts[slot.activityId]||0) + 1;
-        if (slot.leadId && slot.leadId !== 'none') volCounts[slot.leadId] = (volCounts[slot.leadId]||0) + 1;
-      });
-      Object.entries(actCounts).forEach(([id, n]) => {
-        if (n > 1) warns.push({ type:'duplicate_act', msg:`${cls.name} → "${activities.find(a=>a.id===id)?.name}" ${n}× tekrar!` });
-      });
-    });
-
-    lessonSlots.forEach(slot => {
-      const volMap = {}, actUsage = {};
-      classes.forEach(cls => {
-        const cell = (cls.schedule||{})[slot.id];
-        if (!cell || cell.activityId === 'NO_CLASS') return;
-        if (cell.leadId && cell.leadId !== 'none') {
-          if (!volMap[cell.leadId]) volMap[cell.leadId] = [];
-          volMap[cell.leadId].push(cls.name);
-          const vol = volunteers.find(v => v.id === cell.leadId);
-          if (vol && !vol.capabilities.includes(cell.activityId))
-            warns.push({ type:'competency', msg:`${vol.name}, "${cell.name}" yetkinliğine sahip değil!` });
-        }
-        if (cell.activityId) actUsage[cell.activityId] = (actUsage[cell.activityId]||0) + 1;
-      });
-      Object.entries(volMap).forEach(([vId, cls]) => {
-        if (cls.length > 1) warns.push({ type:'conflict', msg:`${volunteers.find(v=>v.id===vId)?.name} ${slot.start}'de ${cls.length} sınıfta!` });
-      });
-      Object.entries(actUsage).forEach(([aId, n]) => {
-        const act = activities.find(a => a.id === aId);
-        if (act && n > (act.boxCount||99)) warns.push({ type:'stock', msg:`"${act.name}" stok yetersiz! (${n} atandı, ${act.boxCount} kutu)` });
-      });
-    });
-    return warns;
-  }, [classes, activities, timeSlots, volunteers]);
-
-  useEffect(() => { setWarnings(calculateConflicts()); }, [calculateConflicts]);
-
-  const checkConstraints = useCallback((activity, className) => {
-    if (!activity) return false;
-    const grade = detectGrade(className);
-    const safe = activity.allowedGrades || [];
-    if (safe.length > 0) return safe.includes(grade);
-    const n = normalize(activity.name);
-    if (grade > 0 && grade <= 4 && LOGIC_CONFIG.primaryBlacklist.some(b => n.includes(b))) return false;
-    if (grade >= 5 && (n.includes('ilkokul') || (n.includes('boyama') && !n.includes('tuval')))) return false;
-    return true;
+  /** AI / içe aktarım sonucunu tek noktadan uygular. */
+  const applyState = useCallback((next) => {
+    if (next.activities) setActivities(next.activities);
+    if (next.volunteers) { setVolunteers(next.volunteers); syncVolunteers(next.volunteers); }
+    if (next.timeSlots)  setTimeSlots(next.timeSlots);
+    if (next.classes)    { setClasses(next.classes); setHasDistributed(true); }
   }, []);
 
-  // ── DISTRIBUTION ─────────────────────────────────────────────────────────
-  const distributePerfectly = useCallback(() => {
+  /** Dosya (xlsx/csv/txt) ya da yapıştırılan metin — türünü importer kendi bulur. */
+  const handleImport = useCallback(async (input) => {
+    const rows = typeof input === 'string' ? input : await readFile(input);
+    const patch = toStatePatch(parseAny(rows), { activities, volunteers, timeSlots, classes });
+    applyState(patch);
+    onNotify(`İçe aktarıldı — ${patch._kind}: ${patch._summary}`);
+    return `${patch._kind}: ${patch._summary}`;
+  }, [activities, volunteers, timeSlots, classes, applyState, onNotify]);
+
+  // ── DAĞITIM ──────────────────────────────────────────────────────────────
+  const distributePerfectly = useCallback((onlyEmpty = false) => {
+    const lessonSlots = timeSlots.filter(t => t.type === 'lesson');
+    if (!lessonSlots.length || !classes.length || !activities.length) {
+      onNotify('Önce etkinlik, sınıf ve zaman dilimi ekleyin!'); return;
+    }
+    if (!volunteers.length) { onNotify('⚠️ Gönüllü yok — Gönüllüler sekmesinden ekleyin.'); return; }
     setAiState('processing');
-    setHasDistributed(true);
-    setTimeout(() => {
-      const lessonSlots = timeSlots.filter(t => t.type === 'lesson');
-      if (!lessonSlots.length || !classes.length || !activities.length) {
-        setAiState('idle'); onNotify('Etkinlik, sınıf ve zaman dilimi ekleyin önce!'); return;
-      }
-      const runOnce = () => {
-        let nc = JSON.parse(JSON.stringify(classes));
-        nc.forEach(c => { Object.keys(c.schedule||{}).forEach(s => { if (!(c.schedule[s]||{}).isLocked) delete c.schedule[s]; }); });
-        const volLoad = {};
-        volunteers.forEach(v => { volLoad[v.id] = 0; });
-        const getTotalUsage = (actId, allClasses) => { let n=0; allClasses.forEach(c=>Object.values(c.schedule||{}).forEach(s=>{if(s.activityId===actId)n++;})); return n; };
-        const isInClass = (actId, cls) => Object.values(cls.schedule||{}).some(s=>s.activityId===actId);
-        const findLead = (actId, slotId, clsId, allClasses) => {
-          const act = activities.find(a=>a.id===actId);
-          if (getTotalUsage(actId, allClasses) >= (act?.boxCount||99)) return null;
-          const capable   = volunteers.filter(v=>v.capabilities.includes(actId));
-          const available = capable.filter(v=>!allClasses.some(c=>c.id!==clsId&&(c.schedule||{})[slotId]?.leadId===v.id));
-          if (!available.length) return null;
-          available.sort((a,b)=>((volLoad[a.id]||0)-(volLoad[b.id]||0))||(a.capabilities.length-b.capabilities.length));
-          return available[0];
-        };
-        const shuffled = [...nc].sort(()=>Math.random()-.5);
-        const mustActs = activities.filter(a=>a.isMust);
-        const optActs  = activities.filter(a=>!a.isMust);
-        shuffled.forEach(cls => {
-          const free = [...lessonSlots].filter(s=>!(cls.schedule||{})[s.id]).sort(()=>Math.random()-.5);
-          mustActs.forEach(must => {
-            if (!checkConstraints(must,cls.name)||isInClass(must.id,cls)) return;
-            for (let i=0; i<free.length; i++) {
-              const s = free[i];
-              const lead = findLead(must.id, s.id, cls.id, nc);
-              if (lead) { nc.find(c=>c.id===cls.id).schedule[s.id]={activityId:must.id,name:must.name,cat:must.cat,isMust:true,lead:lead.name,leadId:lead.id,support:[]}; volLoad[lead.id]=(volLoad[lead.id]||0)+1; free.splice(i,1); break; }
-            }
-          });
-        });
-        nc.forEach(cls => {
-          lessonSlots.forEach(s => {
-            if ((cls.schedule||{})[s.id]) return;
-            const cands = optActs.filter(a=>checkConstraints(a,cls.name)&&!isInClass(a.id,cls)).sort(()=>Math.random()-.5);
-            for (const act of cands) {
-              const lead = findLead(act.id, s.id, cls.id, nc);
-              if (lead) { cls.schedule[s.id]={activityId:act.id,name:act.name,cat:act.cat,isMust:false,lead:lead.name,leadId:lead.id,support:[]}; volLoad[lead.id]=(volLoad[lead.id]||0)+1; break; }
-            }
-          });
-        });
-        let filled=0; nc.forEach(c=>lessonSlots.forEach(s=>{if((c.schedule||{})[s.id])filled++;}));
-        return { classes:nc, score:filled };
-      };
-      let best=null;
-      for (let i=0; i<5; i++) { const r=runOnce(); if(!best||r.score>best.score)best=r; if(best.score===classes.length*lessonSlots.length)break; }
-      setClasses(best.classes); setAiState('idle');
-      onNotify(`B.A.L.K.I.Z. atamaları tamamladı! (${best.score} slot dolduruldu)`);
-    }, 1200);
-  }, [activities, volunteers, classes, timeSlots, checkConstraints]);
+    // ağır işi bir sonraki frame'e bırak ki buton anında tepki versin
+    requestAnimationFrame(() => {
+      const next = distribute({ activities, volunteers, timeSlots, classes }, { onlyEmpty: !!onlyEmpty });
+      const filled = next.reduce((n, c) => n + lessonSlots.filter(sl => c.schedule[sl.id]).length, 0);
+      setClasses(next); setHasDistributed(true); setAiState('idle');
+      onNotify(`Dağıtım tamam — ${filled}/${classes.length * lessonSlots.length} slot dolu.`);
+    });
+  }, [activities, volunteers, timeSlots, classes, onNotify]);
 
   // ── EXCEL EXPORT ─────────────────────────────────────────────────────────
   const exportToExcelCSV = () => {
@@ -921,111 +771,6 @@ function InfinityScheduler({ onNotify, dark }) {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // ── EXCEL CSV IMPORT (program schedule) ─────────────────────────────────
-  const handleExcelScheduleImport = e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      try {
-        const text = ev.target.result;
-        const lines = text.split('\n').filter(l => l.trim());
-        if (lines.length < 2) { onNotify("Dosya boş veya hatalı!"); return; }
-
-        // Parse header line to get class names
-        const sep = lines[0].includes(';') ? ';' : ',';
-        const parseCell = s => s.replace(/^"(.*)"$/, '$1').trim();
-        const headers = lines[0].split(sep).map(parseCell);
-        const classNames = headers.slice(1).filter(h => h && h !== '');
-
-        // Create or match classes
-        const newClasses = classNames.map(name => {
-          const existing = classes.find(c => c.name === name);
-          return existing || { id: uuid(), name, schedule: {} };
-        });
-
-        // Parse time slots from first column
-        const newTimeSlots = [];
-        const scheduleRows = [];
-
-        lines.slice(1).forEach((line, rowIdx) => {
-          const cells = line.split(sep).map(parseCell);
-          const timeStr = cells[0];
-          if (!timeStr) return;
-
-          const timeMatch = timeStr.match(/(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/);
-          if (!timeMatch) return;
-          const [, start, end] = timeMatch;
-
-          // Detect type from content
-          const contents = cells.slice(1).map(c => c.toLowerCase());
-          let type = 'lesson';
-          if (contents.some(c => c.includes('teneffüs') || c.includes('mola') || c.includes('break'))) type = 'break';
-          else if (contents.some(c => c.includes('öğle') || c.includes('yemek') || c.includes('lunch'))) type = 'lunch';
-
-          const slotId = `imported_${rowIdx}`;
-          newTimeSlots.push({ id: slotId, start, end, type });
-          scheduleRows.push({ slotId, cells: cells.slice(1), type });
-        });
-
-        // Apply schedule to classes
-        const updatedClasses = newClasses.map((cls, ci) => {
-          const schedule = { ...(cls.schedule || {}) };
-          scheduleRows.forEach(({ slotId, cells, type }) => {
-            if (type !== 'lesson') return;
-            const cellVal = cells[ci] || '';
-            if (!cellVal || cellVal === '' || cellVal.toLowerCase().includes('teneffüs') || cellVal.toLowerCase().includes('mola') || cellVal.toLowerCase().includes('öğle')) return;
-            if (cellVal.toLowerCase() === 'ders yok') {
-              schedule[slotId] = { activityId:'NO_CLASS', name:'DERS YOK', cat:'none', isMust:false, lead:'-', leadId:'none', isLocked:true };
-              return;
-            }
-            // Parse "Etkinlik Adı (Gönüllü Adı)" or just "Etkinlik Adı"
-            const match = cellVal.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
-            const actName  = match ? match[1].trim() : cellVal.trim();
-            const leadName = match ? match[2].trim() : '';
-
-            // Find or create activity
-            let act = activities.find(a => a.name.toLowerCase() === actName.toLowerCase());
-            if (!act) act = { id: uuid(), name: actName, cat: 'science', isMust: false, boxCount: 10, allowedGrades: [0,1,2,3,4,5,6,7,8] };
-
-            // Find volunteer
-            const lead = leadName ? volunteers.find(v => v.name.toLowerCase().includes(leadName.toLowerCase())) : null;
-
-            schedule[slotId] = { activityId: act.id, name: act.name, cat: act.cat||'science', isMust: act.isMust||false, lead: lead?.name || leadName || '-', leadId: lead?.id || 'none', support: [] };
-          });
-          return { ...cls, schedule };
-        });
-
-        // Merge new activities if any
-        const newActNames = new Set();
-        updatedClasses.forEach(cls => Object.values(cls.schedule||{}).forEach(s => { if (s.name && s.name !== 'DERS YOK') newActNames.add(s.name); }));
-        const mergedActivities = [...activities];
-        newActNames.forEach(name => {
-          if (!mergedActivities.find(a => a.name.toLowerCase() === name.toLowerCase())) {
-            mergedActivities.push({ id: uuid(), name, cat:'science', isMust:false, boxCount:10, allowedGrades:[0,1,2,3,4,5,6,7,8] });
-          }
-        });
-
-        setConfirmModal({
-          isOpen:true, isDanger:false, title:'Excel Programı Yükle',
-          message:`${newClasses.length} sınıf, ${newTimeSlots.length} zaman dilimi bulundu. Mevcut program güncellenecek.`,
-          onConfirm:() => {
-            setTimeSlots(newTimeSlots);
-            setClasses(updatedClasses);
-            setActivities(mergedActivities);
-            setHasDistributed(true);
-            setConfirmModal({isOpen:false});
-            onNotify(`Excel programı yüklendi! (${updatedClasses.length} sınıf, ${newTimeSlots.length} slot)`);
-          },
-          onCancel:()=>setConfirmModal({isOpen:false}),
-          confirmText:'Yükle'
-        });
-      } catch(err) { onNotify(`Excel okuma hatası: ${err.message}`); }
-    };
-    reader.readAsText(file, 'utf-8');
-    if (excelRef.current) excelRef.current.value = '';
-  };
-
   // ── DRAG & DROP ─────────────────────────────────────────────────────────
   const handleDragStart = (e, clsId, slotId, data) => { if (data && !data.isLocked) dragItem.current = {clsId,slotId,data}; };
   const handleDrop = (e, targetClsId, targetSlotId) => {
@@ -1085,214 +830,54 @@ function InfinityScheduler({ onNotify, dark }) {
     setEditingSlot(null); onNotify("Bu saat tüm sınıflara kapatıldı.");
   };
 
-  // ── AI ACTION HANDLER ────────────────────────────────────────────────────
-  const handleAIAction = useCallback((action) => {
-    switch (action.type) {
-      case 'add_volunteer': {
-        if (!action.name) break;
-        const newV = { id:uuid(), name:action.name, capabilities:action.capabilities||[] };
-        setVolunteers(prev=>{ const u=[...prev,newV]; syncVolunteers(u); return u; });
-        onNotify(`Gönüllü eklendi: ${action.name}`);
-        break;
-      }
-      case 'remove_volunteer': {
-        if (!action.id) break;
-        setVolunteers(prev=>{ const u=prev.filter(v=>v.id!==action.id); syncVolunteers(u); return u; });
-        onNotify("Gönüllü silindi.");
-        break;
-      }
-      case 'update_volunteer_caps': {
-        if (!action.id) break;
-        setVolunteers(prev=>{const u=prev.map(v=>v.id===action.id?{...v,capabilities:action.capabilities||[]}:v);syncVolunteers(u);return u;});
-        onNotify("Gönüllü yetkinlikleri güncellendi.");
-        break;
-      }
-      case 'assign_volunteer_activity': {
-        // Find volunteer by name, find activity by name, add capability
-        const vol = volunteers.find(v=>v.name.toLowerCase().includes((action.volunteerName||'').toLowerCase()));
-        const act = activities.find(a=>a.name.toLowerCase().includes((action.activityName||'').toLowerCase()));
-        if (vol && act) {
-          setVolunteers(prev=>{const u=prev.map(v=>v.id===vol.id&&!v.capabilities.includes(act.id)?{...v,capabilities:[...v.capabilities,act.id]}:v);syncVolunteers(u);return u;});
-          onNotify(`${vol.name} → "${act.name}" atandı.`);
-        } else { onNotify(`⚠️ Gönüllü veya etkinlik bulunamadı: ${action.volunteerName} / ${action.activityName}`); }
-        break;
-      }
-      case 'add_activity': {
-        if (!action.name) break;
-        setActivities(prev=>[...prev,{id:uuid(),name:action.name,cat:'science',isMust:!!action.isMust,boxCount:action.boxCount||1,allowedGrades:action.allowedGrades||[0,1,2,3,4,5,6,7,8]}]);
-        onNotify(`Etkinlik eklendi: ${action.name}`);
-        break;
-      }
-      case 'remove_activity': {
-        if (!action.id) break;
-        setActivities(prev=>prev.filter(a=>a.id!==action.id));
-        onNotify("Etkinlik silindi.");
-        break;
-      }
-      case 'update_activity': {
-        if (!action.id) break;
-        setActivities(prev=>prev.map(a=>a.id===action.id?{...a,...(action.name&&{name:action.name}),...(action.isMust!==undefined&&{isMust:action.isMust}),...(action.boxCount&&{boxCount:action.boxCount})}:a));
-        onNotify("Etkinlik güncellendi.");
-        break;
-      }
-      case 'add_class': {
-        if (!action.name) break;
-        setClasses(prev=>[...prev,{id:uuid(),name:action.name,schedule:{}}]);
-        onNotify(`Sınıf eklendi: ${action.name}`);
-        break;
-      }
-      case 'remove_class': {
-        if (!action.id) break;
-        setClasses(prev=>prev.filter(c=>c.id!==action.id));
-        onNotify("Sınıf silindi.");
-        break;
-      }
-      case 'distribute':
-        distributePerfectly();
-        break;
-      case 'clear_schedule':
-        setClasses(prev=>prev.map(c=>({...c,schedule:{}})));
-        setHasDistributed(false);
-        onNotify("Program sıfırlandı.");
-        break;
-      case 'clear_non_mandatory':
-        setClasses(prev=>prev.map(c=>({...c,schedule:Object.fromEntries(Object.entries(c.schedule||{}).filter(([,s])=>s.isMust||s.activityId==='NO_CLASS'))})));
-        onNotify("Zorunlu olmayanlar silindi.");
-        break;
-      case 'update_slot': {
-        // { classId, slotId, activityId, activityName, leadId, leadName }
-        const targetClass = classes.find(c=>c.id===action.classId||c.name===action.className);
-        if (!targetClass) { onNotify(`⚠️ Sınıf bulunamadı: ${action.classId||action.className}`); break; }
-        let actId = action.activityId;
-        let actName = action.activityName;
-        if (!actId && actName) {
-          const act = activities.find(a=>a.name.toLowerCase().includes(actName.toLowerCase()));
-          if (act) actId = act.id; else { const nA={id:uuid(),name:actName,cat:'science',isMust:false,boxCount:10,allowedGrades:[0,1,2,3,4,5,6,7,8]}; setActivities(prev=>[...prev,nA]); actId=nA.id; }
-        }
-        let leadId = action.leadId;
-        let leadName = action.leadName || '-';
-        if (!leadId && action.leadName) {
-          const vol = volunteers.find(v=>v.name.toLowerCase().includes(action.leadName.toLowerCase()));
-          if (vol) { leadId=vol.id; leadName=vol.name; }
-        }
-        setClasses(prev=>prev.map(c=>{
-          if (c.id!==targetClass.id) return c;
-          const sch={...(c.schedule||{})};
-          sch[action.slotId]={activityId:actId||'',name:actName||'',cat:'science',isMust:false,lead:leadName,leadId:leadId||'none',support:[]};
-          return {...c,schedule:sch};
-        }));
-        onNotify(`Slot güncellendi: ${targetClass.name} → ${actName}`);
-        break;
-      }
-      case 'delete_slot': {
-        const tCls = classes.find(c=>c.id===action.classId||c.name===action.className);
-        if (!tCls) break;
-        setClasses(prev=>prev.map(c=>{
-          if (c.id!==tCls.id) return c;
-          const sch={...(c.schedule||{})}; delete sch[action.slotId]; return {...c,schedule:sch};
-        }));
-        onNotify("Slot silindi.");
-        break;
-      }
-      case 'load_template':
-        setTimeSlots([
-          {id:'t1',start:'09:00',end:'09:40',type:'lesson'},{id:'t2',start:'09:40',end:'09:55',type:'break'},
-          {id:'t3',start:'09:55',end:'10:35',type:'lesson'},{id:'t4',start:'10:35',end:'10:50',type:'break'},
-          {id:'t5',start:'10:50',end:'11:30',type:'lesson'},{id:'t6',start:'11:30',end:'12:30',type:'lunch'},
-          {id:'t7',start:'12:30',end:'13:10',type:'lesson'},{id:'t8',start:'13:10',end:'13:25',type:'break'},
-          {id:'t9',start:'13:25',end:'14:05',type:'lesson'}
-        ]);
-        onNotify("Şablon yüklendi.");
-        break;
-      case 'add_timeslot': {
-        const dur = action.duration||40; const typ = action.slotType||'lesson';
-        const last = timeSlots.length>0 ? timeSlots[timeSlots.length-1].end : '09:00';
-        let [h,m] = last.split(':').map(Number); m+=dur; h+=Math.floor(m/60); m=m%60;
-        setTimeSlots(prev=>[...prev,{id:uuid(),start:last,end:`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`,type:typ}]);
-        onNotify("Zaman dilimi eklendi.");
-        break;
-      }
-      default: break;
-    }
-  }, [activities, volunteers, classes, timeSlots, distributePerfectly]);
-
-  const appState = { activities, volunteers, classes, timeSlots };
-
   // ── OTOMATİK PROGRAM OLUŞTUR ─────────────────────────────────────────────
+  // Eksik ne varsa makul varsayılanı koyar, sonra tek geçişte dağıtır.
+  const DEFAULT_CLASSES = ['Ana Sınıfı','1-A','1-B','2-A','2-B','3-A','3-B','4-A','4-B'];
+  const DEFAULT_ACTS = [
+    { name:'Origami',          isMust:false, boxCount:10, allowedGrades:[0,1,2,3,4] },
+    { name:'Yaratıcı Drama',   isMust:true,  boxCount:8,  allowedGrades:[] },
+    { name:'Resim',            isMust:false, boxCount:12, allowedGrades:[] },
+    { name:'Müzik',            isMust:true,  boxCount:8,  allowedGrades:[] },
+    { name:'Yüz Boyama',       isMust:false, boxCount:6,  allowedGrades:[0,1,2,3,4] },
+    { name:'Kimya Deneyleri',  isMust:false, boxCount:4,  allowedGrades:[4,5,6,7,8] },
+    { name:'Fizik Deneyleri',  isMust:false, boxCount:4,  allowedGrades:[5,6,7,8] },
+    { name:'Robotik',          isMust:false, boxCount:3,  allowedGrades:[5,6,7,8] },
+    { name:'Masa Deneyleri',   isMust:false, boxCount:6,  allowedGrades:[4,5,6,7,8] },
+    { name:'Pino Mino',        isMust:false, boxCount:5,  allowedGrades:[0,1,2,3,4] },
+  ];
+  const TEMPLATE_SLOTS = [
+    ['09:00','09:40','lesson'],['09:40','09:55','break'],['09:55','10:35','lesson'],
+    ['10:35','10:50','break'], ['10:50','11:30','lesson'],['11:30','12:30','lunch'],
+    ['12:30','13:10','lesson'],['13:10','13:25','break'],['13:25','14:05','lesson'],
+  ];
+  const makeTemplate = () => TEMPLATE_SLOTS.map(([start,end,type]) => ({ id:uuid(), start, end, type }));
+
   const autoGenerateProgram = useCallback(() => {
-    if (aiState==='processing') return;
+    if (aiState === 'processing') return;
     setAiState('processing'); setAutoGenStep('Hazırlanıyor…');
-    setTimeout(() => {
-      const finalClasses = classes.length > 0 ? classes
-        : ['Ana Sınıfı','1-A','1-B','2-A','2-B','3-A','3-B','4-A','4-B'].map(n=>({id:uuid(),name:n,schedule:{}}));
-      const defaultActs = [
-        {name:'Origami',isMust:false,boxCount:10,allowedGrades:[0,1,2,3,4]},
-        {name:'Yaratıcı Drama',isMust:true,boxCount:8,allowedGrades:[0,1,2,3,4,5,6,7,8]},
-        {name:'Resim',isMust:false,boxCount:12,allowedGrades:[0,1,2,3,4,5,6,7,8]},
-        {name:'Müzik',isMust:true,boxCount:8,allowedGrades:[0,1,2,3,4,5,6,7,8]},
-        {name:'Yüz Boyama',isMust:false,boxCount:6,allowedGrades:[0,1,2,3,4]},
-        {name:'Kimya Deneyleri',isMust:false,boxCount:4,allowedGrades:[4,5,6,7,8]},
-        {name:'Fizik Deneyleri',isMust:false,boxCount:4,allowedGrades:[5,6,7,8]},
-        {name:'Robotik',isMust:false,boxCount:3,allowedGrades:[5,6,7,8]},
-        {name:'Masa Deneyleri',isMust:false,boxCount:6,allowedGrades:[4,5,6,7,8]},
-        {name:'Pino Mino',isMust:false,boxCount:5,allowedGrades:[0,1,2,3,4]},
-      ].map(d=>({id:uuid(),cat:'science',...d}));
-      const finalActivities = activities.length>0 ? activities : defaultActs;
-      const defaultSlots = [
-        {id:'t1',start:'09:00',end:'09:40',type:'lesson'},{id:'t2',start:'09:40',end:'09:55',type:'break'},
-        {id:'t3',start:'09:55',end:'10:35',type:'lesson'},{id:'t4',start:'10:35',end:'10:50',type:'break'},
-        {id:'t5',start:'10:50',end:'11:30',type:'lesson'},{id:'t6',start:'11:30',end:'12:30',type:'lunch'},
-        {id:'t7',start:'12:30',end:'13:10',type:'lesson'},{id:'t8',start:'13:10',end:'13:25',type:'break'},
-        {id:'t9',start:'13:25',end:'14:05',type:'lesson'},
-      ];
-      const finalSlots = timeSlots.length>0 ? timeSlots : defaultSlots;
 
-      setClasses(finalClasses); setActivities(finalActivities); setTimeSlots(finalSlots);
-      setHasDistributed(true); setAutoGenStep('Dağıtılıyor…');
+    const nextClasses    = classes.length   ? classes    : DEFAULT_CLASSES.map(n => ({ id:uuid(), name:n, schedule:{} }));
+    const nextActivities = activities.length ? activities : DEFAULT_ACTS.map(d => ({ id:uuid(), cat:'science', ...d }));
+    const nextSlots      = timeSlots.length ? timeSlots  : makeTemplate();
 
-      setTimeout(() => {
-        const lessonSlots = finalSlots.filter(t=>t.type==='lesson');
-        if (!lessonSlots.length||!finalClasses.length||!finalActivities.length||!volunteers.length) {
-          setAiState('idle'); setAutoGenStep('');
-          onNotify(volunteers.length===0?'⚠️ Gönüllü eklenmemiş — önce Gönüllüler sekmesinden ekleyin.':'⚠️ Program oluşturulamadı.'); return;
-        }
-        const volLoad = {};
-        volunteers.forEach(v=>{volLoad[v.id]=0;});
-        const getTotalUsage=(actId,allCls)=>{let n=0;allCls.forEach(c=>Object.values(c.schedule||{}).forEach(s=>{if(s.activityId===actId)n++;}));return n;};
-        const isInClass=(actId,cls)=>Object.values(cls.schedule||{}).some(s=>s.activityId===actId);
-        const findLead=(actId,slotId,clsId,allCls)=>{
-          const act=finalActivities.find(a=>a.id===actId);
-          if(getTotalUsage(actId,allCls)>=(act?.boxCount||99))return null;
-          const capable=volunteers.filter(v=>v.capabilities.includes(actId));
-          const available=capable.filter(v=>!allCls.some(c=>c.id!==clsId&&(c.schedule||{})[slotId]?.leadId===v.id));
-          if(!available.length)return null;
-          available.sort((a,b)=>((volLoad[a.id]||0)-(volLoad[b.id]||0))||(a.capabilities.length-b.capabilities.length));
-          return available[0];
-        };
-        const runOnce=()=>{
-          const nc=JSON.parse(JSON.stringify(finalClasses));
-          nc.forEach(c=>{Object.keys(c.schedule||{}).forEach(s=>{if(!(c.schedule[s]||{}).isLocked)delete c.schedule[s];});});
-          const mustActs=finalActivities.filter(a=>a.isMust);
-          const optActs=finalActivities.filter(a=>!a.isMust);
-          const shuffled=[...nc].sort(()=>Math.random()-.5);
-          shuffled.forEach(cls=>{
-            const free=[...lessonSlots].filter(s=>!(cls.schedule||{})[s.id]).sort(()=>Math.random()-.5);
-            mustActs.forEach(must=>{
-              if(!checkConstraints(must,cls.name)||isInClass(must.id,cls))return;
-              for(let i=0;i<free.length;i++){const lead=findLead(must.id,free[i].id,cls.id,nc);if(lead){nc.find(c=>c.id===cls.id).schedule[free[i].id]={activityId:must.id,name:must.name,isMust:true,lead:lead.name,leadId:lead.id,support:[]};volLoad[lead.id]=(volLoad[lead.id]||0)+1;free.splice(i,1);break;}}
-            });
-          });
-          nc.forEach(cls=>{lessonSlots.forEach(s=>{if((cls.schedule||{})[s.id])return;const cands=optActs.filter(a=>checkConstraints(a,cls.name)&&!isInClass(a.id,cls)).sort(()=>Math.random()-.5);for(const act of cands){const lead=findLead(act.id,s.id,cls.id,nc);if(lead){cls.schedule[s.id]={activityId:act.id,name:act.name,isMust:false,lead:lead.name,leadId:lead.id,support:[]};volLoad[lead.id]=(volLoad[lead.id]||0)+1;break;}}});});
-          let filled=0;nc.forEach(c=>lessonSlots.forEach(s=>{if((c.schedule||{})[s.id])filled++;}));
-          return{classes:nc,score:filled};
-        };
-        let best=null;
-        for(let i=0;i<5;i++){const r=runOnce();if(!best||r.score>best.score)best=r;if(best.score===finalClasses.length*lessonSlots.length)break;}
-        setClasses(best.classes); setAiState('idle'); setAutoGenStep('');
-        onNotify(`✨ Program hazır! (${best.score} slot dolduruldu)`);
-      }, 200);
-    }, 80);
-  }, [aiState, classes, activities, timeSlots, volunteers, checkConstraints, onNotify]);
+    if (!volunteers.length) {
+      setActivities(nextActivities); setTimeSlots(nextSlots); setClasses(nextClasses);
+      setAiState('idle'); setAutoGenStep('');
+      onNotify('⚠️ Gönüllü eklenmemiş — iskelet kuruldu, Gönüllüler sekmesinden kişileri ekleyin.');
+      return;
+    }
+
+    setAutoGenStep('Dağıtılıyor…');
+    requestAnimationFrame(() => {
+      const state = { activities:nextActivities, volunteers, timeSlots:nextSlots, classes:nextClasses };
+      const result = distribute(state);
+      const lessons = nextSlots.filter(t => t.type === 'lesson');
+      const filled = result.reduce((n, c) => n + lessons.filter(sl => c.schedule[sl.id]).length, 0);
+      setActivities(nextActivities); setTimeSlots(nextSlots); setClasses(result);
+      setHasDistributed(true); setAiState('idle'); setAutoGenStep('');
+      onNotify(`✨ Program hazır — ${filled}/${nextClasses.length * lessons.length} slot dolduruldu.`);
+    });
+  }, [aiState, classes, activities, timeSlots, volunteers, onNotify]);
 
   // ── RENDER ───────────────────────────────────────────────────────────────
   const cardCls = `rounded-2xl border shadow-sm p-4 animate-fadeIn dk-card dk-border`;
@@ -1327,9 +912,11 @@ function InfinityScheduler({ onNotify, dark }) {
               <UploadCloud size={13}/> Yedek Yükle
               <input type="file" accept=".json" className="hidden" ref={fileInputRef} onChange={handleImportBackup}/>
             </label>
-            <label className="flex items-center gap-1.5 px-3 py-2 text-xs font-600 text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors cursor-pointer">
-              <FileSpreadsheet size={13}/> Excel Program Yükle
-              <input type="file" accept=".csv,.txt" className="hidden" ref={excelRef} onChange={handleExcelScheduleImport}/>
+            <label className="flex items-center gap-1.5 px-3 py-2 text-xs font-600 text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors cursor-pointer"
+              title="Excel/CSV: program tablosu, gönüllü listesi, etkinlik kataloğu ya da sınıf listesi — türü otomatik anlaşılır">
+              <FileSpreadsheet size={13}/> Excel / CSV İçe Aktar
+              <input type="file" accept=".xlsx,.xlsm,.csv,.txt,.tsv" className="hidden"
+                onChange={e=>{ const f=e.target.files?.[0]; e.target.value=''; if(f) handleImport(f).catch(err=>onNotify(`⚠️ ${err.message}`)); }}/>
             </label>
           </div>
         )}
@@ -1339,7 +926,7 @@ function InfinityScheduler({ onNotify, dark }) {
       {activeView === 'view' && (
         <>
           {/* AI Chat */}
-          <BalkizAIChat appState={appState} onAction={handleAIAction} warnings={warnings} dark={dark}/>
+          <BalkizAIChat appState={appState} onApply={applyState} onImport={handleImport} warnings={warnings} dark={dark}/>
 
           {/* Action bar */}
           <div className={`no-print flex flex-wrap gap-2 items-center rounded-2xl border p-3 shadow-sm dk-card dk-border`}>
@@ -1352,9 +939,17 @@ function InfinityScheduler({ onNotify, dark }) {
             </button>
 
             {/* B.A.L.K.I.Z. Dağıt */}
-            <button onClick={distributePerfectly} disabled={aiState==='processing'||!!autoGenStep}
+            <button onClick={()=>distributePerfectly(false)} disabled={aiState==='processing'||!!autoGenStep}
+              title="Kilitli hücreler dışında her şeyi yeniden dağıtır"
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-700 text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 shadow-sm transition-all active:scale-95 disabled:opacity-60">
               {aiState==='processing' ? <><RefreshCw size={15} className="animate-spin"/> İşleniyor…</> : <><Wand2 size={15}/> B.A.L.K.I.Z. Dağıtımı</>}
+            </button>
+
+            {/* Sadece boşları doldur — mevcut atamalara dokunmaz */}
+            <button onClick={()=>distributePerfectly(true)} disabled={aiState==='processing'||!!autoGenStep}
+              title="Mevcut atamalara dokunmadan yalnızca boş hücreleri doldurur"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-700 text-indigo-600 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition-all active:scale-95 disabled:opacity-60">
+              <PlusCircle size={15}/> Boşları Doldur
             </button>
 
             {/* Sıfırla seçenekleri */}
@@ -1742,15 +1337,20 @@ function InfinityScheduler({ onNotify, dark }) {
               <button onClick={()=>setBulkModalOpen(false)} className="p-2 dk-text-muted hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"><X size={17}/></button>
             </div>
             <div className="p-5">
-              <p className="text-xs dk-text-muted font-500 mb-3">Excel'den kopyaladığınız isim listesini yapıştırın <span className="text-indigo-600 font-700">(Her satıra 1 isim)</span></p>
-              <textarea className="w-full h-56 border border-slate-200 p-3 rounded-xl text-sm font-400 dk-text outline-none focus:border-indigo-400 resize-none dk-card-inner focus:bg-white transition-colors"
-                placeholder={"Mustafa Berke Şimşekler\nEda Nur Keklik\nHüseyin Vural…"} value={bulkText} onChange={e=>setBulkText(e.target.value)}/>
+              <p className="text-xs dk-text-muted font-500 mb-3">
+                Excel'den kopyaladığınız listeyi yapıştırın. <span className="text-indigo-600 font-700">Her satır 1 kişi.</span>{' '}
+                İkinci sütuna yetkinlikleri yazarsanız otomatik eşleşir.
+              </p>
+              <textarea className="w-full h-56 border border-slate-200 p-3 rounded-xl text-sm font-400 dk-text outline-none focus:border-indigo-400 resize-none dk-card-inner focus:bg-white transition-colors font-mono"
+                placeholder={"Mustafa Berke Şimşekler\tOrigami, Robotik\nEda Nur Keklik\tYaratıcı Drama\nHüseyin Vural"}
+                value={bulkText} onChange={e=>setBulkText(e.target.value)}/>
             </div>
             <div className="flex justify-end gap-3 p-5 border-t dk-border dk-card-inner">
               <button onClick={()=>setBulkModalOpen(false)} className="px-5 py-2.5 rounded-xl text-sm font-600 dk-card border dk-border dk-text hover:bg-slate-100 transition-colors">İptal</button>
               <button onClick={()=>{
-                const names=bulkText.split('\n').map(n=>n.trim()).filter(n=>n.length>0);
-                if(names.length>0){const newVols=names.map(n=>({id:uuid(),name:n,capabilities:[]}));const u=[...volunteers,...newVols];setVolunteers(u);syncVolunteers(u);setBulkText('');setBulkModalOpen(false);onNotify(`${names.length} gönüllü eklendi!`);}
+                if(!bulkText.trim()) return;
+                handleImport(bulkText).then(()=>{ setBulkText(''); setBulkModalOpen(false); })
+                                      .catch(err=>onNotify(`⚠️ ${err.message}`));
               }} className={btnPrim}>
                 <CheckCircle2 size={16}/> Kaydet
               </button>
@@ -2010,7 +1610,6 @@ function CollageApp({ onNotify, dark }) {
   const [globalNameSize, setGlobalNameSize] = useState(16);
   const [pagePadding,    setPagePadding]    = useState(12);
   const [aiState,        setAiState]        = useState('idle');
-  const [warnings,       setWarnings]       = useState([]);
   const [confirmModal,   setConfirmModal]   = useState({isOpen:false});
 
   useEffect(()=>{
@@ -2236,7 +1835,7 @@ export default function ProkordiManagerApp() {
             <div>
               <div style={{ fontSize:13, fontWeight:800, color:textPrimary, letterSpacing:'-.02em', lineHeight:1.2 }}>ProKordi</div>
               <div style={{ fontSize:13, fontWeight:800, color:textPrimary, letterSpacing:'-.02em', lineHeight:1.2 }}>Manager</div>
-              <div style={{ fontSize:9, fontWeight:700, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.1em', marginTop:1 }}>B.A.L.K.I.Z. v4.0</div>
+              <div style={{ fontSize:9, fontWeight:700, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.1em', marginTop:1 }}>B.A.L.K.I.Z. v5.0</div>
             </div>
           </div>
         </div>

@@ -1,70 +1,64 @@
-# Getting Started with Create React App
+# ProKordi Manager v5
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Gönüllü etkinlik programı yöneticisi — otomatik veya manuel program kurma, isimlik matbaası, görsel kolaj ve resmi tutanak modülleri.
 
-## Available Scripts
+## v5'te ne değişti
 
-In the project directory, you can run:
+| Alan | Eski | Yeni |
+|---|---|---|
+| **Model** | tek `llama-3.3-70b-versatile` (emekli oldu → uygulama çöküyordu) | 4'lü otomatik zincir (`gpt-oss-120b` → `kimi-k2` → `llama-4-maverick` → `8b-instant`), zorunlu JSON modu |
+| **Emir anlama** | düz prompt, AI'dan ID isteniyordu | AI sadece **isim** yazar, id çözümlemesi uygulamada; bulanık eşleşme ("eda" → "Eda Nur Keklik"), 20 aksiyon tipi, tek mesajda çoklu emir |
+| **İçe aktarma** | yalnızca CSV program tablosu | `.xlsx` / `.csv` / `.tsv` / sürükle-bırak / **doğrudan yapıştırma**; tür otomatik algılanır (program / gönüllü / etkinlik / sınıf / isim) |
+| **Performans** | her render'da tam tarama + her keystroke'ta `localStorage` yazımı | `Map`/`Set` indeksli tek geçiş, `useMemo`, 250 ms debounce'lu kayıt |
+| **Doğruluk** | kutu limiti dağıtımda gün geneli, uyarıda saat bazı sayılıyordu (tutarsız) | her ikisi de **saat bazında** — aynı kutu farklı saatte tekrar kullanılabilir |
+| **Bundle** | — | Excel okuyucu 900 KB'lık SheetJS yerine 3 KB'lık kendi okuyucumuz, ayrıca **lazy-load** |
 
-### `npm start`
+## Mimari
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+```
+api/chat.js          Vercel serverless — Groq, model zinciri + JSON modu
+src/lib/util.js      Türkçe normalize, bulanık eşleşme, slot çözümleme
+src/lib/db.js        debounce'lu localStorage + bellek önbelleği
+src/lib/engine.js    çakışma tespiti + dağıtım (indeksli, O(n) yakın)
+src/lib/importer.js  Excel / CSV / yapıştırma → state yaması
+src/lib/xlsx.js      minimal .xlsx okuyucu (fflate, dinamik import)
+src/lib/ai.js        durum sıkıştırma, sistem promptu, aksiyon reducer'ı
+src/App.js           arayüz
+```
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+`lib/` içindeki her şey saf fonksiyon: `applyActions(state, actions)` girdi state'ini
+değiştirmez, yeni state + insan-okunur log döndürür. Testler bunu doğrular.
 
-### `npm test`
+## Kurulum
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+```bash
+npm install
+npm start          # http://localhost:3000
+npm test           # 25 birim testi
+npm run build
+```
 
-### `npm run build`
+## Vercel
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+1. Repo'yu Vercel'e bağlayın (Framework: **Create React App**).
+2. **Settings → Environment Variables** → `GROQ_API_KEY` ekleyin ([console.groq.com](https://console.groq.com/keys)).
+3. Deploy. `api/chat.js` otomatik olarak serverless fonksiyon olur.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+Anahtar yoksa uygulama çalışır; yalnızca sohbet kutusu uyarı verir.
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+## Sohbet kutusu ne anlar
 
-### `npm run eject`
+```
+3. ders 4-A'ya Kimya koy, Mehmet anlatsın
+Ayşe'yi ekle, origami ve drama yapabilir
+1-A ile 2-B'nin ilk derslerini değiştir
+boş kalan yerleri doldur
+zorunlular kalsın, gerisini sil
+Origami'nin kutu sayısını 5 yap ve zorunlu işaretle
+```
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+Excel'den kopyaladığınız tabloyu doğrudan sohbet kutusuna yapıştırabilirsiniz —
+AI'ya gitmeden anında içe aktarılır.
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
-
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+---
+© 2026 [Mustafa Berke Şimşekler](https://github.com/ragno-typhojem) — MIT
