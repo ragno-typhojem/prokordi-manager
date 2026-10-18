@@ -51,6 +51,7 @@ export const db = {
 };
 
 if (typeof window !== 'undefined') {
+  window.addEventListener('storage', event=>{if(event.key)cache.delete(event.key);else cache.clear();});
   window.addEventListener('beforeunload', db.flush);
   document.addEventListener('visibilitychange', () => { if (document.hidden) db.flush(); });
 }

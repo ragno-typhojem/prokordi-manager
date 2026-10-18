@@ -17,31 +17,15 @@ import { db, DB_KEYS } from './lib/db';
 import { uid as uuid, norm, validateTimeSlots, canonicalSlots } from './lib/util';
 import TimeEditor from './components/TimeEditor';
 import Checklist from './components/Checklist';
-import LayoutFeedback from './components/LayoutFeedback';
-import { readPhoto } from './lib/photos';
+import NameBadges from './components/NameBadges';
+import TeamCollage from './components/TeamCollage';
+import Welcome from './components/Welcome';
+import SessionBar from './components/SessionBar';
+import {sessionKeys,loadSessions,saveSessions,syncSessionRoster,crossSessionConflicts,sessionReservations} from './lib/sessions';
 import { mergeCatalog } from './lib/catalog';
 import { calculateConflicts, distribute, workload, planSummary } from './lib/engine';
 import { askBalkiz, applyActions } from './lib/ai';
 import { readFile, parseAny, toStatePatch } from './lib/importer';
-
-const syncVolunteers = (src = null) => {
-  const source=src||db.load(DB_KEYS.VOLUNTEERS,[]);
-  for(const key of [DB_KEYS.VOLUNTEERS,DB_KEYS.NAMETAG_VOLUNTEERS,DB_KEYS.COLLAGE_VOLUNTEERS]){
-    const previous=db.load(key,[]);
-    const merged=source.map(person=>{
-      const old=previous.find(p=>p.id===person.id)||{};
-      const shared={id:person.id,name:person.name,capabilities:person.capabilities||old.capabilities||[]};
-      return {...old,...shared};
-    });
-    db.save(key,[...merged,...previous.filter(p=>!source.some(person=>person.id===p.id))]);
-  }
-  return source;
-};
-
-const IMAGES = {
-  NAME_BG:     "/nametags/front.png",
-  QUESTION_BG: "/nametags/back.png"
-};
 
 // ─── GLOBAL STYLES ────────────────────────────────────────────────────────────
 const buildCSS = (dark) => `
@@ -440,16 +424,17 @@ const JarvisBrain = ({ active }) => {
 const CHIPS = [
   'Programı doldur',
   'Boş kalan yerleri doldur',
-  'Zorunlular kalsın, gerisini sil',
+  'Programı kontrol et',
   'Standart saat şablonunu yükle',
 ];
 
-function BalkizAIChat({ appState, onApply, onImport, warnings = [], dark }) {
+function BalkizAIChat({ appState, onApply, onImport, warnings = [], dark, sessionId }) {
+  const DB_KEYS=sessionKeys(sessionId);
   const INITIAL = [{ role:'assistant', content:'Merhaba! Ben B.A.L.K.I.Z. 🧠\nNe istediğinizi normal Türkçe yazın — gerisini ben hallederim.\n\n• "3. ders 4-A\'ya Kimya koy, Mehmet anlatsın"\n• "Ayşe\'yi ekle, origami ve drama yapabilir"\n• "boş kalan yerleri doldur"\n\nExcel/CSV dosyasını buraya sürükleyin ya da tabloyu doğrudan yapıştırın — türünü kendim anlarım.' }];
   const [messages, setMessages] = useState(() => db.load(DB_KEYS.CHAT_HISTORY, INITIAL));
   const [input, setInput]       = useState('');
   const [loading, setLoading]   = useState(false);
-  const [isOpen, setIsOpen]     = useState(true);
+  const [isOpen, setIsOpen]     = useState(false);
   const [dropping, setDropping] = useState(false);
   const endRef   = useRef(null);
   const abortRef = useRef(null);
@@ -649,7 +634,9 @@ const NavBtn = ({ active, onClick, icon, label, dark }) => (
 );
 
 // ─── MODULE 1: INFINITY SCHEDULER ────────────────────────────────────────────
-function InfinityScheduler({ onNotify, dark }) {
+function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion }) {
+  const DB_KEYS=useMemo(()=>sessionKeys(sessionId),[sessionId]);
+  const syncVolunteers=useCallback(src=>syncSessionRoster(sessionId,src),[sessionId]);
   const [activeView, setActiveView] = useState('view');
   const [confirmModal, setConfirmModal] = useState({ isOpen: false });
 
@@ -663,6 +650,7 @@ function InfinityScheduler({ onNotify, dark }) {
   const [autoGenStep,    setAutoGenStep]    = useState('');
   const [editingSlot,    setEditingSlot]    = useState(null);
   const [bulkModalOpen,  setBulkModalOpen]  = useState(false);
+  const [classDraft,setClassDraft]=useState('');
   const [bulkText,       setBulkText]       = useState('');
   const [importPreview,setImportPreview] = useState(null);
   const [undoState,setUndoState] = useState(null);
@@ -683,16 +671,20 @@ function InfinityScheduler({ onNotify, dark }) {
   );
 
   const appState = useMemo(
-    () => ({ activities, volunteers, timeSlots, classes }),
-    [activities, volunteers, timeSlots, classes]
+    () => ({ activities, volunteers, timeSlots, classes,reservations:sessionReservations(sessionId,sessions) }),
+    [activities, volunteers, timeSlots, classes,sessionId,sessions,dataVersion]
   );
+
+  const latestPlan=useRef(appState);latestPlan.current=appState;
+  useEffect(()=>()=>{latestPlan.current=null;},[]);
+  const otherTeamWarnings=useMemo(()=>crossSessionConflicts(sessionId,appState,sessions),[sessionId,appState,sessions,dataVersion]);
 
   /** AI / içe aktarım sonucunu tek noktadan uygular. */
   const applyState = useCallback((next) => {
     if (next.timeSlots) { const errors = validateTimeSlots(next.timeSlots); if(errors.length) throw new Error(errors.join(' ')); next = {...next, timeSlots:canonicalSlots(next.timeSlots)}; }
     setUndoState({activities,volunteers,timeSlots,classes});
     db.save('prokordi_before_change',{activities,volunteers,timeSlots,classes},0);
-    if(next.extras){const ex=next.extras;for(const [key,value] of [[DB_KEYS.NAMETAG_VOLUNTEERS,ex.nametags],[DB_KEYS.COLLAGE_VOLUNTEERS,ex.collage],['prokordi_checklist_v1',ex.checklist],['prokordi_name_layout_v1',ex.nameLayout],['prokordi_collage_layout_v1',ex.collageLayout]])if(value)db.save(key,value);}
+    if(next.extras){const ex=next.extras;for(const [key,value] of [[DB_KEYS.NAMETAG_VOLUNTEERS,ex.nametags],[DB_KEYS.COLLAGE_VOLUNTEERS,ex.collage],['prokordi_packing_5days_v2',ex.checklist],['prokordi_fold_badge_v1',ex.nameLayout],['prokordi_collage_title_v2',ex.collageTitle],['prokordi_collage_address_v2',ex.collageAddress]])if(value)db.save(key,value);}
     if (next.activities) setActivities(next.activities);
     if (next.volunteers) { setVolunteers(next.volunteers); syncVolunteers(next.volunteers); }
     if (next.timeSlots)  setTimeSlots(next.timeSlots);
@@ -719,30 +711,32 @@ function InfinityScheduler({ onNotify, dark }) {
     setAiState('processing');
     // ağır işi bir sonraki frame'e bırak ki buton anında tepki versin
     requestAnimationFrame(() => {
-      const next = distribute({ activities, volunteers, timeSlots, classes }, { onlyEmpty: !!onlyEmpty });
+      if(latestPlan.current!==appState){setAiState('idle');onNotify('Program veya başka bir ekip değişti; son düzenlemeleri korudum. Dağıtımı yeniden başlatın.');return;}
+      const next = distribute({ activities, volunteers, timeSlots, classes }, { onlyEmpty: !!onlyEmpty,reservations:sessionReservations(sessionId,sessions) });
       const filled = next.reduce((n, c) => n + lessonSlots.filter(sl => c.schedule[sl.id]).length, 0);
       setUndoState(appState); setClasses(next); setHasDistributed(true); setAiState('idle');
       onNotify(planSummary({activities,volunteers,timeSlots,classes:next}));
     });
-  }, [activities, volunteers, timeSlots, classes, onNotify]);
+  }, [activities, volunteers, timeSlots, classes, onNotify,sessionId,sessions]);
 
   // ── EXCEL EXPORT ─────────────────────────────────────────────────────────
   const exportToExcelCSV = () => {
     if (!classes.length || !timeSlots.length) { onNotify("Dışa aktarılacak program yok!"); return; }
     const sep = ';';
+    const quote=value=>'\"'+String(value??'').replace(/\"/g,'\"\"')+'\"';
     let csv = '\uFEFF';
-    csv += `"SAAT / SINIF"${sep}` + classes.map(c=>`"${c.name}"`).join(sep) + '\n';
+    csv += `"SAAT / SINIF"${sep}` + classes.map(c=>quote(c.name)).join(sep) + '\n';
     timeSlots.forEach(slot => {
       let row = `"${slot.start} - ${slot.end}"`;
       if (slot.type !== 'lesson') {
-        const lbl = slot.type==='break'?'TENEFFÜS':slot.type==='lunch'?'ÖĞLE ARASI':'MOLA';
-        row += sep + classes.map(()=>`"${lbl}"`).join(sep);
+        const lbl = slot.type==='break'?'TENEFFÜS':slot.type==='lunch'?'ÖĞLE ARASI':`TOPLU SUNUM: ${slot.title||'Açılış sunumu'}`;
+        row += sep + classes.map(()=>quote(lbl)).join(sep);
       } else {
         row += sep + classes.map(c => {
           const cell = (c.schedule||{})[slot.id];
           if (!cell) return '""';
           if (cell.activityId==='NO_CLASS') return '"DERS YOK"';
-          return `"${cell.name} (${cell.lead})"`;
+          return quote(`${cell.name} (${cell.lead})`);
         }).join(sep);
       }
       csv += row + '\n';
@@ -756,7 +750,7 @@ function InfinityScheduler({ onNotify, dark }) {
   };
 
   const exportBackupJSON = () => {
-    const blob = new Blob([JSON.stringify({activities,volunteers,timeSlots,classes,extras:{nametags:db.load(DB_KEYS.NAMETAG_VOLUNTEERS,[]),collage:db.load(DB_KEYS.COLLAGE_VOLUNTEERS,[]),checklist:db.load('prokordi_checklist_v1',[]),nameLayout:db.load('prokordi_name_layout_v1',{}),collageLayout:db.load('prokordi_collage_layout_v1',{})}},null,2)],{type:'application/json'});
+    const blob = new Blob([JSON.stringify({activities,volunteers,timeSlots,classes,extras:{nametags:db.load(DB_KEYS.NAMETAG_VOLUNTEERS,[]),collage:db.load(DB_KEYS.COLLAGE_VOLUNTEERS,[]),checklist:db.load('prokordi_packing_5days_v2',[]),nameLayout:db.load('prokordi_fold_badge_v1',{}),collageTitle:db.load('prokordi_collage_title_v2','İLKYAR PROJESİ EKİBİ'),collageAddress:db.load('prokordi_collage_address_v2','')}},null,2)],{type:'application/json'});
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href=url; a.download=`ProkordiManager_Yedek_${new Date().toISOString().slice(0,10)}.json`;
@@ -771,10 +765,14 @@ function InfinityScheduler({ onNotify, dark }) {
       if(!Array.isArray(d.classes)||!Array.isArray(d.timeSlots)||!Array.isArray(d.activities)||!Array.isArray(d.volunteers))throw new Error('Geçerli program yedeği seçin.');
       const issues=validateTimeSlots(d.timeSlots);if(issues.length)throw new Error(issues.join(' '));
       if(!d.classes.every(c=>c.id&&c.name&&c.schedule&&typeof c.schedule==='object'))throw new Error('Yedekteki sınıf yapısı geçersiz.');
+      if(!d.volunteers.every(v=>v&&typeof v.id==='string'&&typeof v.name==='string'&&Array.isArray(v.capabilities)))throw new Error('Gönüllü kayıtları ve yetkinlik listeleri geçersiz.');
+      if(!d.activities.every(a=>a&&typeof a.id==='string'&&typeof a.name==='string'&&(!a.allowedGrades||Array.isArray(a.allowedGrades))))throw new Error('Etkinlik kayıtları geçersiz.');
+      if(d.extras)for(const key of ['nametags','collage','checklist'])if(d.extras[key]&&!Array.isArray(d.extras[key]))throw new Error('Yedekteki ek liste yapısı geçersiz.');
       setImportPreview({...d,_kind:'JSON yedek',_summary:`${d.classes.length} sınıf, ${d.timeSlots.length} saat. Yedek uygulanacak; önceki program geri alınabilir.`});
     }catch(err){onNotify(err.message);}finally{e.target.value='';}
   };
 
+  const handleDragStart=(event,clsId,slotId,cell)=>{if(cell.isLocked||cell.activityId==='NO_CLASS'){event.preventDefault();return;}dragItem.current={clsId,slotId};};
   const handleDrop = (e, targetClsId, targetSlotId) => {
     e.preventDefault();
     const src = dragItem.current;
@@ -783,6 +781,8 @@ function InfinityScheduler({ onNotify, dark }) {
     const copy = JSON.parse(JSON.stringify(classes));
     const sC = copy.find(c=>c.id===src.clsId);
     const tC = copy.find(c=>c.id===targetClsId);
+    if(!sC||!tC||!sC.schedule[src.slotId])return;
+    setUndoState(appState);
     if (tC.schedule[targetSlotId]?.isLocked || sC.schedule[src.slotId]?.isLocked) { onNotify("Kilitli alanlar taşınamaz!"); return; }
     const sD = sC.schedule[src.slotId];
     const tD = tC.schedule[targetSlotId];
@@ -834,42 +834,6 @@ function InfinityScheduler({ onNotify, dark }) {
 
   // ── OTOMATİK PROGRAM OLUŞTUR ─────────────────────────────────────────────
   // Eksik ne varsa makul varsayılanı koyar, sonra tek geçişte dağıtır.
-  const DEFAULT_CLASSES = ['1-A','1-B','2-A','2-B','3-A','3-B','4-A','4-B'];
-  const DEFAULT_ACTS = mergeCatalog([]);
-  const TEMPLATE_SLOTS = [
-    ['08:00','08:40','lesson'],['08:40','08:55','break'],['08:55','09:35','lesson'],
-    ['09:35','09:50','break'], ['09:50','10:30','lesson'],['10:30','11:30','lunch'],
-    ['11:30','12:10','lesson'],['12:10','12:25','break'],['12:25','13:05','lesson'],
-  ];
-  const makeTemplate = () => TEMPLATE_SLOTS.map(([start,end,type]) => ({ id:uuid(), start, end, type }));
-
-  const autoGenerateProgram = useCallback(() => {
-    if (aiState === 'processing') return;
-    setAiState('processing'); setAutoGenStep('Hazırlanıyor…');
-
-    const nextClasses    = classes.length   ? classes    : DEFAULT_CLASSES.map(n => ({ id:uuid(), name:n, schedule:{} }));
-    const nextActivities = activities.length ? activities : DEFAULT_ACTS.map(d => ({ id:uuid(), cat:'science', ...d }));
-    const nextSlots      = timeSlots.length ? timeSlots  : makeTemplate();
-
-    if (!volunteers.length) {
-      setActivities(nextActivities); setTimeSlots(nextSlots); setClasses(nextClasses);
-      setAiState('idle'); setAutoGenStep('');
-      onNotify('⚠️ Gönüllü eklenmemiş — iskelet kuruldu, Gönüllüler sekmesinden kişileri ekleyin.');
-      return;
-    }
-
-    setAutoGenStep('Dağıtılıyor…');
-    requestAnimationFrame(() => {
-      const state = { activities:nextActivities, volunteers, timeSlots:nextSlots, classes:nextClasses };
-      const result = distribute(state);
-      const lessons = nextSlots.filter(t => t.type === 'lesson');
-      const filled = result.reduce((n, c) => n + lessons.filter(sl => c.schedule[sl.id]).length, 0);
-      setActivities(nextActivities); setTimeSlots(nextSlots); setClasses(result);
-      setHasDistributed(true); setAiState('idle'); setAutoGenStep('');
-      onNotify(planSummary({activities:nextActivities,volunteers,timeSlots:nextSlots,classes:result}));
-    });
-  }, [aiState, classes, activities, timeSlots, volunteers, onNotify]);
-
   // ── RENDER ───────────────────────────────────────────────────────────────
   const cardCls = `rounded-2xl border shadow-sm p-4 animate-fadeIn dk-card dk-border`;
   const inputCls = `border rounded-xl px-4 py-2.5 text-sm font-500 flex-1 outline-none transition-colors dk-input dk-border`;
@@ -892,11 +856,10 @@ function InfinityScheduler({ onNotify, dark }) {
         <NavBtn dark={dark} active={activeView==='activities'} onClick={()=>setActiveView('activities')} icon={<Package size={15}/>}       label="Etkinlikler"/>
         <NavBtn dark={dark} active={activeView==='volunteers'} onClick={()=>setActiveView('volunteers')} icon={<GraduationCap size={15}/>}  label="Gönüllüler"/>
         <button className="text-sm text-indigo-600 font-700 p-2" onClick={()=>{setBulkModalOpen(true);}}>Liste / tablo yapıştır</button>
-        <button className="text-sm text-indigo-600 font-700 p-2" onClick={()=>{const text='\uFEFFGönüllü;Yetkinlikler\nAyşe Yılmaz;Origami, Resim\nMehmet Demir;Matematik, Robot\n';const url=URL.createObjectURL(new Blob([text],{type:'text/csv;charset=utf-8;'}));const a=document.createElement('a');a.href=url;a.download='gonullu-ornek.csv';a.click();URL.revokeObjectURL(url);}}>Örnek CSV</button>
         <div className="flex-1"/>
         {undoState && <button className="text-sm font-700 text-indigo-600 p-2" onClick={()=>{const restore=undoState;setActivities(restore.activities);setVolunteers(restore.volunteers);setTimeSlots(restore.timeSlots);setClasses(restore.classes);setUndoState(null);onNotify('Son değişiklik geri alındı.');}}>Son değişikliği geri al</button>}
         {activeView === 'view' && (
-          <div className="flex gap-2 flex-wrap">
+          <details className="dk-text text-sm"><summary className="cursor-pointer p-2">Dosya işlemleri</summary><div className="flex gap-2 flex-wrap py-2">
             <button onClick={exportToExcelCSV} className="flex items-center gap-1.5 px-3 py-2 text-xs font-600 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors">
               <Download size={13}/> Excel
             </button>
@@ -913,32 +876,26 @@ function InfinityScheduler({ onNotify, dark }) {
               <input type="file" accept=".xlsx,.xlsm,.csv,.txt,.tsv" className="hidden"
                 onChange={e=>{ const f=e.target.files?.[0]; e.target.value=''; if(f) handleImport(f).catch(err=>onNotify(`⚠️ ${err.message}`)); }}/>
             </label>
-          </div>
+          </div></details>
         )}
       </div>
 
       {/* ── VIEW: Program ── */}
       {activeView === 'view' && (
         <>
+          <div className="no-print grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">{[['volunteers','1 · Ekibi ve yetkinlikleri gir'],['setup','2 · Sınıflar, sunum ve saatler'],['view','3 · Programı dağıt ve kontrol et']].map(([view,label])=><button key={view} onClick={()=>setActiveView(view)} className="dk-card dk-border border rounded-xl p-3 text-sm font-700 dk-text text-left">{label}</button>)}</div>
+          {otherTeamWarnings.length>0&&<div role="alert" className="no-print bg-amber-50 text-amber-900 rounded-xl p-4 my-3 text-sm"><strong>Ekipler arası çakışma</strong>{otherTeamWarnings.map(w=><p key={w}>{w}</p>)}</div>}
           {/* AI Chat */}
-          <BalkizAIChat appState={appState} onApply={applyState} onImport={handleImport} warnings={warnings} dark={dark}/>
+          <BalkizAIChat sessionId={sessionId} appState={appState} onApply={applyState} onImport={handleImport} warnings={warnings} dark={dark}/>
 
           <section className="dk-card dk-border border rounded-2xl p-4 my-4 no-print"><h3 className="font-700 dk-text">Program geri bildirimi</h3><p className="text-sm dk-text my-2">{planSummary(appState)}</p><div className="flex flex-wrap gap-2">{workload(appState).map(v=><span key={v.id} className="dk-card-inner dk-text text-xs p-2 rounded-lg">{v.name}: {v.lead} sorumlu · {v.support} yardımcı · {v.minutes} dk · {v.variety} farklı etkinlik</span>)}</div><details className="mt-3 text-sm dk-text"><summary className="cursor-pointer">Tüm uyarılar ({warnings.length})</summary><div className="max-h-64 overflow-auto space-y-2 mt-2">{warnings.map((w,i)=><p key={i}>{w.msg}</p>)}</div></details></section>
           {/* Action bar */}
           <div className={`no-print flex flex-wrap gap-2 items-center rounded-2xl border p-3 shadow-sm dk-card dk-border`}>
-            {/* Otomatik Oluştur */}
-            <button onClick={autoGenerateProgram} disabled={aiState==='processing'||!!autoGenStep}
-              title="Tüm verilerle program oluştur — AI prompt gerekmez"
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-700 text-white shadow-sm transition-all active:scale-95 disabled:opacity-60"
-              style={{ background:autoGenStep?'linear-gradient(135deg,#f59e0b,#f97316)':'linear-gradient(135deg,#10b981,#059669)', boxShadow:autoGenStep?'0 2px 12px rgba(245,158,11,.35)':'0 2px 12px rgba(16,185,129,.35)' }}>
-              {autoGenStep ? <><RefreshCw size={15} style={{animation:'spinSlow .8s linear infinite'}}/>{autoGenStep}</> : <><Zap size={15}/> Otomatik Program Oluştur</>}
-            </button>
-
             {/* B.A.L.K.I.Z. Dağıt */}
             <button onClick={()=>distributePerfectly(false)} disabled={aiState==='processing'||!!autoGenStep}
               title="Kilitli hücreler dışında her şeyi yeniden dağıtır"
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-700 text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 shadow-sm transition-all active:scale-95 disabled:opacity-60">
-              {aiState==='processing' ? <><RefreshCw size={15} className="animate-spin"/> İşleniyor…</> : <><Wand2 size={15}/> B.A.L.K.I.Z. Dağıtımı</>}
+              {aiState==='processing' ? <><RefreshCw size={15} className="animate-spin"/> İşleniyor…</> : <><Wand2 size={15}/> Programı dağıt / dengele</>}
             </button>
 
             {/* Sadece boşları doldur — mevcut atamalara dokunmaz */}
@@ -948,23 +905,7 @@ function InfinityScheduler({ onNotify, dark }) {
               <PlusCircle size={15}/> Boşları Doldur
             </button>
 
-            {/* Sıfırla seçenekleri */}
-            <div className="flex gap-2 ml-auto">
-              <button onClick={()=>setConfirmModal({isOpen:true,isDanger:true,title:'Zorunlu Olmayanları Sil',
-                message:'Zorunlu (must) olmayan tüm atamalar silinecek.',
-                onConfirm:()=>{setClasses(prev=>prev.map(c=>({...c,schedule:Object.fromEntries(Object.entries(c.schedule||{}).filter(([,s])=>s.isMust||s.activityId==='NO_CLASS'))}))); setConfirmModal({isOpen:false}); onNotify("Zorunlu olmayanlar silindi."); },
-                onCancel:()=>setConfirmModal({isOpen:false}),confirmText:'Sil'})}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-600 text-orange-500 bg-orange-50 border border-orange-100 hover:bg-orange-100 transition-colors">
-                <Star size={13}/> Sadece Zorunluları Bırak
-              </button>
-              <button onClick={()=>setConfirmModal({isOpen:true,isDanger:true,title:'Tüm Programı Sıfırla',
-                message:'Tüm sınıf programları tamamen silinecek.',
-                onConfirm:()=>{setClasses(prev=>prev.map(c=>({...c,schedule:{}}))); setHasDistributed(false); setConfirmModal({isOpen:false}); onNotify("Program sıfırlandı."); },
-                onCancel:()=>setConfirmModal({isOpen:false}),confirmText:'Sıfırla'})}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-600 text-red-500 bg-red-50 border border-red-100 hover:bg-red-100 transition-colors">
-                <Trash2 size={14}/> Tüm Programı Sıfırla
-              </button>
-            </div>
+
           </div>
 
           {/* Schedule Table */}
@@ -973,10 +914,10 @@ function InfinityScheduler({ onNotify, dark }) {
               <div className="p-12 text-center">
                 <Calendar size={40} className="mx-auto mb-4 text-slate-300"/>
                 <p className="text-sm font-600 dk-text-muted mb-2">Program Henüz Oluşturulmadı</p>
-                <p className="text-xs dk-text-muted mb-5">Sınıf & Zaman sekmesinden ayar yapın veya otomatik oluşturun.</p>
-                <button onClick={autoGenerateProgram} disabled={aiState==='processing'}
+                <p className="text-xs dk-text-muted mb-5">Önce sınıfları, başlangıç sunumunu ve günün saatlerini seçin.</p>
+                <button onClick={()=>setActiveView('setup')} disabled={aiState==='processing'}
                   className="mx-auto flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-700 text-white bg-gradient-to-r from-emerald-600 to-teal-600 shadow-sm hover:from-emerald-700 hover:to-teal-700 transition-all active:scale-95">
-                  <Zap size={16}/> Otomatik Program Oluştur
+                  <Zap size={16}/> Sınıfları ve günü hazırla
                 </button>
               </div>
             ) : (
@@ -1007,12 +948,12 @@ function InfinityScheduler({ onNotify, dark }) {
                         <div className="font-700">{slot.start}</div>
                         <div className="text-slate-300 text-[9px]">—</div>
                         <div>{slot.end}</div>
-                        {slot.type!=='lesson' && <div className="text-[9px] font-700 text-indigo-400 mt-0.5 uppercase tracking-wider">{slot.type==='break'?'MOLA':slot.type==='lunch'?'YEMEK':'—'}</div>}
+                        {slot.type!=='lesson' && <div className="text-[9px] font-700 text-indigo-400 mt-0.5 uppercase tracking-wider">{slot.type==='break'?'MOLA':slot.type==='lunch'?'YEMEK':'SUNUM'}</div>}
                       </td>
                       {slot.type !== 'lesson' ? (
                         <td colSpan={classes.length} className="p-3 text-center bg-stripes">
                           <span className="text-[11px] font-700 tracking-widest dk-text-muted uppercase">
-                            {slot.type==='break'?'🔔 Teneffüs':slot.type==='lunch'?'🍽️ Öğle Arası':'Mola'}
+                            {slot.type==='break'?'🔔 Teneffüs':slot.type==='lunch'?'🍽️ Öğle Arası':(slot.title||'🎤 Açılış sunumu · Tüm ekip ve sınıflar')}
                           </span>
                         </td>
                       ) : (
@@ -1197,27 +1138,15 @@ function InfinityScheduler({ onNotify, dark }) {
           {/* Sınıflar */}
           <div className={cardCls}>
             <h3 className="text-base font-700 dk-text flex items-center gap-2 mb-4"><BookOpen size={18} className="text-indigo-600"/> Şubeler</h3>
-            <div className="flex flex-wrap gap-2 mb-4">
-              {Array.from({length:8},(_,i)=>Array.from('ABCDEFGH',letter=>`${i+1}-${letter}`)).flat().map(n=>{
-                const sel=classes.find(c=>c.name===n);
-                return <button key={n} onClick={()=>{if(sel)setClasses(prev=>prev.filter(c=>c.name!==n));else setClasses(prev=>[...prev,{id:uuid(),name:n,schedule:{}}]);}}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-700 border-2 transition-all active:scale-95 ${sel?'bg-indigo-600 border-indigo-600 text-white shadow-sm':'dk-card border dk-border dk-text-muted hover:border-indigo-300 hover:text-indigo-500'}`}>
-                  {n}
-                </button>;
-              })}
-            </div>
-            <div className="flex gap-2 pt-4 border-t dk-border">
-              <input type="text" id="newClass" placeholder="Sınıf adı (Örn: 5-H, 9-C, 12-F)" onKeyDown={e=>{
-                if(e.key==='Enter'&&e.target.value.trim()){const v=e.target.value.trim();if(classes.find(c=>c.name===v))onNotify("Zaten var!");else{setClasses(prev=>[...prev,{id:uuid(),name:v,schedule:{}}]);e.target.value='';onNotify("Eklendi.");}}
-              }} className={inputCls}/>
-              <button onClick={()=>{const v=document.getElementById('newClass').value.trim();if(v&&!classes.find(c=>c.name===v)){setClasses(prev=>[...prev,{id:uuid(),name:v,schedule:{}}]);document.getElementById('newClass').value='';onNotify("Eklendi.");}}} className="bg-slate-800 text-white px-5 py-2 rounded-xl text-sm font-700 hover:bg-slate-700 transition-colors">Ekle</button>
-            </div>
+            <p className="text-sm dk-text-muted mb-3">Sınıfları virgülle veya alt alta yazın. Örneğin: 1-A, 5-H, 8-B.</p>
+            <textarea aria-label="Sınıf listesi" value={classDraft} onChange={e=>setClassDraft(e.target.value)} placeholder="1-A, 5-H, 8-B" className="dk-input dk-border border rounded-xl p-3 w-full h-28"/>
+            <button className="bg-indigo-600 text-white rounded-xl px-4 py-2 mt-2" onClick={()=>{const names=classDraft.split(/[,;\n]+/).map(n=>n.trim().toLocaleUpperCase('tr')).filter(Boolean);setUndoState(appState);setClasses(prev=>[...prev,...[...new Set(names)].filter(n=>!prev.some(c=>norm(c.name)===norm(n))).map(name=>({id:uuid(),name,schedule:{}}))]);setClassDraft('');onNotify('Sınıflar eklendi. Mevcut atamalar korundu.');}}>Sınıfları ekle</button>
             {classes.length>0 && (
               <div className="mt-3 flex flex-wrap gap-2">
                 {classes.map(c=>(
                   <span key={c.id} className="flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-100 px-3 py-1.5 rounded-xl text-xs font-700">
                     {c.name}
-                    <button onClick={()=>setClasses(prev=>prev.filter(x=>x.id!==c.id))} className="hover:text-red-500 transition-colors ml-1"><X size={10}/></button>
+                    <button aria-label={`${c.name} sınıfını kaldır`} onClick={()=>setConfirmModal({isOpen:true,isDanger:true,title:'Sınıfı kaldır',message:`${c.name} ve atamaları bu oturumdan kaldırılacak. Son değişikliği geri alabilirsiniz.`,onConfirm:()=>{setUndoState(appState);setClasses(prev=>prev.filter(x=>x.id!==c.id));setConfirmModal({isOpen:false});},onCancel:()=>setConfirmModal({isOpen:false})})} className="hover:text-red-500 transition-colors ml-1"><X size={10}/></button>
                   </span>
                 ))}
               </div>
@@ -1316,387 +1245,23 @@ function InfinityScheduler({ onNotify, dark }) {
   );
 }
 
-// ─── INTERACTIVE TEXT ─────────────────────────────────────────────────────────
-const InteractiveText = ({ text, size, offsetY, onUpdate, className, style, placeholder, isEditable }) => {
-  const [dragging, setDragging] = useState(false);
-  const startPos = useRef({ x:0, y:0 });
-  const startVals= useRef({ size:0, offset:0 });
-  const onPointerDown = e => {
-    if (e.button!==0) return; e.preventDefault();
-    setDragging(true); startPos.current={x:e.clientX,y:e.clientY}; startVals.current={size,offset:offsetY||0};
-  };
-  useEffect(() => {
-    const move = e => {
-      if (!dragging) return;
-      const dx=e.clientX-startPos.current.x, dy=e.clientY-startPos.current.y;
-      onUpdate(Math.max(10,Math.min(200,startVals.current.size+dx/3)), startVals.current.offset+dy);
-    };
-    const up = () => setDragging(false);
-    if (dragging) { window.addEventListener('pointermove',move); window.addEventListener('pointerup',up); }
-    return () => { window.removeEventListener('pointermove',move); window.removeEventListener('pointerup',up); };
-  }, [dragging, onUpdate]);
-  return (
-    <div data-fit-text className={`relative group/t cursor-move select-none ${className}`}
-      style={{...style, fontSize:`${size}px`, transform:`translateY(${offsetY}px)`, touchAction:'none'}} onPointerDown={onPointerDown}>
-      <div className={`absolute -top-6 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] px-2 py-1 rounded whitespace-nowrap z-50 pointer-events-none no-print ${dragging?'opacity-100':'opacity-0 group-hover/t:opacity-60'} transition-opacity`}>
-        {Math.round(size)}px
-      </div>
-      {isEditable
-        ? <input type="text" value={text} onChange={isEditable} className="bg-transparent text-center w-full outline-none" onPointerDown={e=>e.stopPropagation()}/>
-        : <span>{text || placeholder}</span>}
-    </div>
-  );
-};
-
-// ─── INTERACTIVE PHOTO ────────────────────────────────────────────────────────
-const InteractivePhoto = ({ src, scale, translateX, translateY, onUpdate, id }) => {
-  const [dragging, setDragging] = useState(false);
-  const startPos  = useRef({x:0,y:0});
-  const startVals = useRef({x:0,y:0});
-  const onPointerDown = e => {
-    if (e.button!==0||!src) return; e.preventDefault(); setDragging(true);
-    startPos.current={x:e.clientX,y:e.clientY}; startVals.current={x:translateX||0,y:translateY||0};
-  };
-  useEffect(() => {
-    const move = e => { if(!dragging)return; onUpdate(id,scale||1,startVals.current.x+(e.clientX-startPos.current.x),startVals.current.y+(e.clientY-startPos.current.y)); };
-    const up = () => setDragging(false);
-    if (dragging) { window.addEventListener('pointermove',move); window.addEventListener('pointerup',up); }
-    return () => { window.removeEventListener('pointermove',move); window.removeEventListener('pointerup',up); };
-  }, [dragging, id, scale, onUpdate]);
-  return (
-    <div className="relative w-full h-full cursor-move overflow-hidden bg-slate-50 rounded-xl select-none touch-none group/img" onPointerDown={onPointerDown}>
-      {src ? (
-        <img src={src} alt="Gönüllü" className="max-w-none absolute inset-0 w-full h-full pointer-events-none select-none"
-          style={{objectFit:'contain',transform:`scale(${scale||1}) translate(${translateX||0}px,${translateY||0}px)`,transformOrigin:'center center'}}/>
-      ) : (
-        <div className="flex flex-col items-center justify-center h-full text-slate-300 gap-1">
-          <Camera size={18}/><span className="text-[7px] font-700 uppercase no-print">Tıkla Yükle</span>
-        </div>
-      )}
-      {src && !dragging && (
-        <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white/90 px-2 py-1 rounded-full shadow-sm no-print opacity-0 group-hover/img:opacity-100 transition-opacity z-20 border border-slate-100 scale-75">
-          <Minus size={8} className="text-slate-400"/>
-          <input type="range" min="1" max="5" step="0.05" value={scale||1}
-            onChange={e=>onUpdate(id,parseFloat(e.target.value),translateX,translateY)}
-            className="w-12 h-1 bg-indigo-100 rounded-lg accent-indigo-600 cursor-pointer appearance-none"
-            onPointerDown={e=>e.stopPropagation()}/>
-          <PlusCircle size={8} className="text-indigo-500"/>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// ─── MODULE 2: İSİMLİK MATBAASI ──────────────────────────────────────────────
-function NameTagApp({ onNotify, dark }) {
-  const savedLayout=db.load('prokordi_name_layout_v1',{});
-  const layoutRef=useRef(null);
-  const [repeatNames,setRepeatNames] = useState(()=>savedLayout.repeatNames ?? true);
-  const [mirrorBack,setMirrorBack] = useState(()=>savedLayout.mirrorBack ?? false);
-  // cm/mm based sizing — real nametags are 85mm x 55mm (standard) or 100mm x 30mm (horizontal)
-  const NAMETAG_FORMATS = [
-    { id:'standard',  label:'Standart (85×55mm)',  w:85, h:55, namePx:54, surnPx:18 },
-    { id:'horizontal',label:'Yatay Uzun (100×30mm)',w:100,h:30, namePx:36, surnPx:14  },
-    { id:'badge',     label:'Rozet (60×90mm)',      w:60, h:90, namePx:62, surnPx:18 },
-    { id:'wide',      label:'Geniş Yatay (120×40mm)',w:120,h:40,namePx:44, surnPx:16 },
-  ];
-  const [format, setFormat]           = useState(()=>savedLayout.format ?? 'standard');
-  const [pagePadding, setPagePadding] = useState(()=>savedLayout.pagePadding ?? 5);
-  const [cardGap, setCardGap]         = useState(()=>savedLayout.cardGap ?? 2);
-  const [vertComp, setVertComp]       = useState(()=>savedLayout.vertComp ?? 0);
-  const [globalScale, setGlobalScale] = useState(()=>savedLayout.globalScale ?? 100);
-  const [cmScale, setCmScale]         = useState(()=>savedLayout.cmScale ?? 100); // percentage of real-world cm
-  const [volunteers, setVolunteers]   = useState(() => db.load(DB_KEYS.NAMETAG_VOLUNTEERS, []));
-  const [aiState, setAiState]         = useState('idle');
-  const [warnings, setWarnings]       = useState([]);
-  const [confirmModal, setConfirmModal] = useState({isOpen:false});
-  const [promptModal,  setPromptModal]  = useState({isOpen:false});
-
-  useEffect(()=>{db.save('prokordi_name_layout_v1',{repeatNames,mirrorBack,format,pagePadding,cardGap,vertComp,globalScale,cmScale});},[repeatNames,mirrorBack,format,pagePadding,cardGap,vertComp,globalScale,cmScale]);
-  const fmt = NAMETAG_FORMATS.find(f=>f.id===format) || NAMETAG_FORMATS[0];
-  // Convert mm to px at 96dpi: 1mm = 3.7795px
-  const MM_TO_PX = 3.7795;
-  const fitScale = Math.min(cmScale/100,(210-2*pagePadding)/fmt.w,(297-2*pagePadding)/fmt.h);
-  const cardW = fmt.w * MM_TO_PX * fitScale;
-  const cardH = fmt.h * MM_TO_PX * fitScale;
-  const COLS = Math.max(1,Math.floor((210-2*pagePadding+cardGap)/(cardW/MM_TO_PX+cardGap)));
-  const ROWS = Math.max(1,Math.floor((297-2*pagePadding+cardGap)/(cardH/MM_TO_PX+cardGap)));
-  const perPage=COLS*ROWS;
-
-  useEffect(() => { db.save(DB_KEYS.NAMETAG_VOLUNTEERS, volunteers); syncVolunteers(volunteers); }, [volunteers]);
-
-  useEffect(() => {
-    if (aiState==='processing') return;
-    const issues = [];
-    volunteers.forEach(v => {
-      const nameLen = (v.name||'').length;
-      const estPx = fmt.namePx * (cmScale/100) * (globalScale/100);
-      // Estimate rendered width: ~0.6 * fontSize per char for average Latin char
-      const shownName=(v.name||'').split(' ').slice(0,-1).join(' ')||(v.name||'');
-      const estWidth = shownName.length * (v.nameSize || Math.min(estPx,cardW/Math.max(shownName.length*0.62,1))) * 0.55;
-      const availW   = cardW - 8; // padding
-      if (estWidth > availW)
-        issues.push({ msg: `"${v.name.split(' ')[0]}" ismi karta sığmayabilir (${Math.round(estWidth)}px > ${Math.round(availW)}px). Yazı boyutunu küçültün.` });
-      if (nameLen > 28)
-        issues.push({ msg: `"${v.name}" ismi çok uzun (${nameLen} karakter).` });
-    });
-    setWarnings(issues);
-  }, [volunteers, aiState, fmt, cmScale, globalScale, cardW]);
-
-  const handleAutoFix = () => {
-    setAiState('processing');
-    setTimeout(() => {
-      setVolunteers(prev=>prev.map(v=>({...v, nameSize: Math.min(fmt.namePx,cardW/Math.max(Math.min((v.name||'').length,14)*0.62,1),(cardH-50)/3), nameY:0, surnameSize:fmt.surnPx, surnameY:5 })));
-      setAiState('idle'); onNotify("İsimlikler standart formata ayarlandı!");
-    }, 1000);
-  };
-
-  const formatNameDisplay = fullName => {
-    const parts = fullName.trim().split(' ');
-    if (parts.length===1) return { first:parts[0], last:'' };
-    return { first:parts.slice(0,-1).join(' '), last:parts[parts.length-1] };
-  };
-
-  const pages = [];
-  for (let i=0; i<volunteers.length; i+=perPage) {
-    const chunk = volunteers.slice(i,i+perPage);
-    pages.push({type:'names',items:chunk});
-    const backs=Array.from({length:perPage},(_,i)=>chunk[i]||{id:'blank-'+i,name:''});
-    if(mirrorBack)for(let r=0;r<ROWS;r++)backs.splice(r*COLS,COLS,...backs.slice(r*COLS,(r+1)*COLS).reverse());
-    pages.push({type:'questions',items:backs});
-    if(repeatNames)pages.push({type:'names',items:chunk});
-  }
-
-  return (
-    <div className="space-y-5 relative">
-      <ConfirmModal {...confirmModal} dark={dark}/>
-      <PromptModal  {...promptModal}/>
-
-      <style>{`@media print{@page{size:A4 portrait;margin:0}.badge-page{width:210mm!important;height:297mm!important;box-sizing:border-box!important;overflow:hidden!important}}`}</style>
-      <div className="no-print space-y-4">
-        <div className="dk-card dk-border border rounded-2xl p-4 space-y-3 dk-text"><h3 className="font-700">A4 isimlik sayfaları</h3><p className="text-sm">{perPage} isim / sayfa · {pages.length} A4 sayfa. İsimler → arka yüzler → aynı isimler sırası. Her isim her isim sayfasında aynı boyutta ve konumdadır.</p><label className="flex gap-2 text-sm"><input type="checkbox" checked={repeatNames} onChange={e=>setRepeatNames(e.target.checked)}/> Arka yüzden sonra aynı isim sayfasını tekrarla</label><label className="flex gap-2 text-sm"><input type="checkbox" checked={mirrorBack} onChange={e=>setMirrorBack(e.target.checked)}/> Çift taraflı baskı için arka yüz sütunlarını aynala</label><textarea aria-label="İsimlik isimleri" className="dk-input border dk-border rounded-xl p-3 w-full h-32" value={volunteers.map(v=>v.name).join('\n')} onChange={e=>{const names=e.target.value.split('\n');setVolunteers(prev=>names.map((name,i)=>({...prev[i],id:prev[i]?.id||uuid(),name})));}}/><p className="text-xs dk-text-muted">Her satır bir isim. Mevcut gönüllü kayıtları korunur; yeni isimler listeye eklenir.</p></div>
-        {warnings.length > 0 && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {warnings.map((w,i)=>(
-              <div key={i} className="text-xs font-500 text-amber-700 flex items-start gap-1.5">
-                <AlertTriangle size={12} className="shrink-0 mt-0.5"/> {w.msg}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Format seçimi */}
-        <div className="dk-card border dk-border rounded-2xl shadow-sm p-5 grid grid-cols-2 md:grid-cols-4 gap-3">
-          {NAMETAG_FORMATS.map(f=>(
-            <button key={f.id} onClick={()=>setFormat(f.id)}
-              className={`p-3 rounded-xl border-2 text-left transition-all ${format===f.id?'border-indigo-500 bg-indigo-50 text-indigo-700':'dk-border dk-card dk-text hover:border-indigo-300'}`}>
-              <div className="text-xs font-700 mb-1">{f.label}</div>
-              <div className="text-[10px] dk-text-muted font-500">{f.w}mm × {f.h}mm</div>
-              <div className="mt-2 border dk-border rounded" style={{width:'100%',height:Math.round(f.h/f.w*40),background:'rgba(99,102,241,.1)'}}/>
-            </button>
-          ))}
-        </div>
-
-        <div className="dk-card border dk-border rounded-2xl shadow-sm p-5 grid grid-cols-2 md:grid-cols-5 gap-5 items-end">
-          {[
-            {label:'Kenar Boşluğu (mm)', val:pagePadding, min:0,  max:30,  set:setPagePadding, color:'accent-indigo-600' },
-            {label:'Dikey Sıkıştır',     val:vertComp,    min:0,  max:30,  set:setVertComp,    color:'accent-orange-500'},
-            {label:'Kart Aralığı (mm)',  val:cardGap,     min:0,  max:20,  set:setCardGap,     color:'accent-teal-500'  },
-            {label:'Genel Ölçek (%)',    val:globalScale, min:60, max:100, set:setGlobalScale, color:'accent-indigo-600'},
-            {label:'Gerçek Boyut (%)',   val:cmScale,     min:50, max:150, set:setCmScale,     color:'accent-pink-500'  },
-          ].map(c=>(
-            <div key={c.label} className="flex flex-col gap-2">
-              <label className="text-[10px] font-700 dk-text-muted uppercase tracking-widest">{c.label}</label>
-              <div className="flex items-center gap-2">
-                <input type="range" min={c.min} max={c.max} value={c.val} onChange={e=>c.set(parseInt(e.target.value))} className={`w-full h-1.5 rounded-full cursor-pointer ${c.color}`}/>
-                <span className="text-xs font-700 dk-text w-8 text-right">{c.val}</span>
-              </div>
-            </div>
-          ))}
-          <button onClick={handleAutoFix} disabled={aiState==='processing'}
-            className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white px-4 py-2.5 rounded-xl text-sm font-700 flex gap-2 items-center justify-center shadow-sm transition-all active:scale-95 disabled:opacity-60">
-            {aiState==='processing'?<><RefreshCw size={15} className="animate-spin"/>İşleniyor</>:<><Wand2 size={15}/>B.A.L.K.I.Z.</>}
-          </button>
-        </div>
-      </div>
-
-      <LayoutFeedback targetRef={layoutRef} onFix={handleAutoFix}/>
-      <div ref={layoutRef} className="block overflow-x-auto space-y-12 pb-20 print:space-y-0 print:pb-0 print:overflow-visible">
-        {pages.map((page,pIndex)=>(
-          <div key={pIndex} className="print-page badge-page bg-white shadow-xl mx-auto overflow-hidden print:shadow-none print:m-0" style={{padding:`${pagePadding}mm`,width:'210mm',height:'297mm',boxSizing:'border-box'}}>
-            <div className="grid" style={{
-              transform:`scale(${globalScale/100})`, transformOrigin:'top center',
-              height:`${100-vertComp}%`,
-              gridTemplateColumns:`repeat(${COLS}, ${cardW}px)`,
-              gridTemplateRows:`repeat(${ROWS}, ${cardH}px)`,
-              justifyContent:'center', alignContent:'start',
-              gap:`${cardGap}mm`
-            }}>
-              {page.items.map((vol)=>{
-                const {first,last}=formatNameDisplay(vol.name||'');
-                const ns = vol.nameSize    || Math.min(fmt.namePx,cardW/Math.max(Math.min(first.length,14)*0.62,1),(cardH-40)/3);
-                const ss = vol.surnameSize || fmt.surnPx;
-                const ny = vol.nameY    || 0;
-                const sy = vol.surnameY || 5;
-
-                if (page.type==='names') return (
-                  <div data-fit-card key={vol.id} className="relative overflow-hidden flex flex-col" style={{minWidth:`${cardW}px`,maxWidth:`${cardW}px`,height:`${cardH}px`}}>
-                    <img src={IMAGES.NAME_BG} alt="" className="absolute inset-0 w-full h-full object-cover pointer-events-none" draggable={false}/>
-                    <div className="relative z-10 flex flex-col items-center justify-center h-full gap-0.5">
-                      <InteractiveText text={first} size={ns*(cmScale/100)} offsetY={ny}
-                        onUpdate={(s,o)=>setVolunteers(prev=>prev.map(v=>v.id===vol.id?{...v,nameSize:s/cmScale*100,nameY:o}:v))}
-                        className="font-comic font-black text-slate-900 text-center w-full px-2" style={{letterSpacing:'-.01em'}}/>
-                      {last && <InteractiveText text={last} size={ss*(cmScale/100)} offsetY={sy}
-                        onUpdate={(s,o)=>setVolunteers(prev=>prev.map(v=>v.id===vol.id?{...v,surnameSize:s/cmScale*100,surnameY:o}:v))}
-                        className="font-comic font-bold text-slate-800 text-center w-full px-2"/>}
-                    </div>
-                    <button onClick={()=>setConfirmModal({isOpen:true,isDanger:true,title:'İsimlikten Çıkar',message:`${vol.name} yalnızca isimlik çıktısından çıkarılacak.`,
-                      onConfirm:()=>{const u=volunteers.filter(v=>v.id!==vol.id);syncVolunteers(u);setVolunteers(u);setConfirmModal({isOpen:false});},
-                      onCancel:()=>setConfirmModal({isOpen:false})})}
-                      className="absolute top-1 right-1 no-print opacity-0 hover:opacity-100 bg-black/30 text-white p-1 rounded-full transition-opacity">
-                      <Trash2 size={9}/>
-                    </button>
-                  </div>
-                );
-
-                return (
-                  <div key={vol.id} className="relative overflow-hidden" style={{minWidth:`${cardW}px`,maxWidth:`${cardW}px`,height:`${cardH}px`}}>
-                    {vol.name && <img src={IMAGES.QUESTION_BG} alt="" className="absolute inset-0 w-full h-full object-cover pointer-events-none" draggable={false}/>}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ─── MODULE 3: GÖRSEL KOLAJ ───────────────────────────────────────────────────
-function CollageApp({ onNotify, dark }) {
-  const savedLayout=db.load('prokordi_collage_layout_v1',{});
-  const layoutRef=useRef(null);
-  const [projectTitle,   setProjectTitle]   = useState(()=>savedLayout.title||"İLKYAR PROJESİ EKİBİ");
-  const [projectAddress, setProjectAddress] = useState(()=>savedLayout.address||"Adres: Çiğdem Mah. 1588.Sok. No:81 06580 Çankaya/ANKARA");
-  const [volunteers,     setVolunteers]     = useState(()=>db.load(DB_KEYS.COLLAGE_VOLUNTEERS,[]));
-  const [globalNameSize, setGlobalNameSize] = useState(()=>savedLayout.nameSize??16);
-  const [pagePadding,    setPagePadding]    = useState(()=>savedLayout.padding??12);
-  const [warnings,setWarnings] = useState([]);
-  const [aiState,        setAiState]        = useState('idle');
-  const [confirmModal,   setConfirmModal]   = useState({isOpen:false});
-
-  useEffect(()=>{db.save('prokordi_collage_layout_v1',{title:projectTitle,address:projectAddress,nameSize:globalNameSize,padding:pagePadding});},[projectTitle,projectAddress,globalNameSize,pagePadding]);
-  useEffect(()=>{
-    db.save(DB_KEYS.COLLAGE_VOLUNTEERS,volunteers); syncVolunteers(volunteers);
-    const issues=[];
-    const missing=volunteers.filter(v=>!v.photo);
-    if(missing.length>0)issues.push({msg:`${missing.length} fotoğraf eksik.`});
-    setWarnings(issues);
-  },[volunteers]);
-
-  const handleAutoFix=useCallback(()=>{
-    setAiState('processing');
-    setTimeout(()=>{
-      let sorted=[...volunteers].sort((a,b)=>a.name.localeCompare(b.name,'tr'));
-      setVolunteers(sorted); setAiState('idle'); onNotify("Sıralandı!");
-    },800);
-  },[volunteers,onNotify]);
-
-  const cnt=volunteers.length;
-  let cols=3;
-  if(cnt<=4)cols=2;else if(cnt<=9)cols=3;else if(cnt<=16)cols=4;else cols=5;
-  const chunks=Array.from({length:Math.max(1,Math.ceil(cnt/20))},(_,i)=>volunteers.slice(i*20,i*20+20));
-
-  return (
-    <div className="space-y-5 relative">
-      <style>{`@media print { @page { size:A4 portrait; margin:0; } .collage-print-strict { width:210mm!important; height:297mm!important; max-height:297mm!important; overflow:hidden!important; display:flex!important; flex-direction:column!important; box-sizing:border-box!important; } }`}</style>
-      <ConfirmModal {...confirmModal} dark={dark}/>
-      <div className="no-print space-y-4">
-        {warnings.length>0 && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-wrap gap-3">
-            {warnings.map((w,i)=><div key={i} className="text-xs font-500 text-amber-700 flex items-center gap-1.5"><AlertTriangle size={12}/>{w.msg}</div>)}
-          </div>
-        )}
-        <div className="dk-card border dk-border rounded-2xl shadow-sm p-5 grid grid-cols-1 md:grid-cols-3 gap-5 items-end">
-          <div className="flex flex-col gap-2">
-            <label className="text-[10px] font-700 dk-text-muted uppercase tracking-widest flex items-center gap-1"><Type size={10}/> İsim Boyutu</label>
-            <input type="range" min="10" max="35" value={globalNameSize} onChange={e=>setGlobalNameSize(parseInt(e.target.value))} className="w-full accent-indigo-600 cursor-pointer h-1.5"/>
-          </div>
-          <div className="flex flex-col gap-2">
-            <label className="text-[10px] font-700 dk-text-muted uppercase tracking-widest flex items-center gap-1"><Maximize2 size={10}/> Kenar Payı</label>
-            <input type="range" min="0" max="30" value={pagePadding} onChange={e=>setPagePadding(parseInt(e.target.value))} className="w-full accent-pink-600 cursor-pointer h-1.5"/>
-          </div>
-          <button onClick={handleAutoFix} disabled={aiState==='processing'}
-            className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white px-5 py-2.5 rounded-xl text-sm font-700 flex gap-2 items-center justify-center shadow-sm transition-all active:scale-95 disabled:opacity-60">
-            {aiState==='processing'?<><RefreshCw size={15} className="animate-spin"/>İşleniyor</>:<><Wand2 size={15}/>Alfabetik Sırala</>}
-          </button>
-        </div>
-      </div>
-      <div className="no-print dk-card dk-border border p-4 rounded-2xl dk-text"><h3 className="font-700">Balkız · Kolaj kontrolü</h3><p className="text-sm mt-2">Dikey A4 · {chunks.length} sayfa · sayfa başına en fazla 20 kişi. Fotoğrafları sürükleyerek konumlandırın, isimleri doğrudan düzenleyin. Büyük ekipler eşit hücrelerle yeni sayfalara ayrılır.</p><p className="text-sm mt-2">{volunteers.filter(v=>v.name.length>26).length} uzun isim · {volunteers.filter(v=>!v.photo).length} eksik fotoğraf.</p><button className="mt-2 bg-indigo-600 text-white p-3 rounded-xl" onClick={()=>{setGlobalNameSize(14);setPagePadding(12);onNotify('Balkız: Dikey A4, eşit hücreler ve uzun isimler için 14 px yazı ayarlandı. Eksik fotoğrafları ekleyin.');}}>Balkız ile sayfaya sığdır</button></div>
-      <LayoutFeedback targetRef={layoutRef} onFix={()=>{setGlobalNameSize(12);setPagePadding(12);onNotify('Balkız: İsimler küçültüldü; sayfa kontrolü yenilendi.');}}/>
-      <div ref={layoutRef} className="overflow-x-auto pb-20 print-container print:pb-0">
-        {chunks.map((pageItems,pageIndex)=>{const pageCols=pageItems.length<=4?2:pageItems.length<=12?3:4;const rows=Math.max(1,Math.ceil(pageItems.length/pageCols));return <div key={pageIndex} className="print-page collage-print-strict bg-white shadow-2xl flex flex-col relative" style={{padding:`${pagePadding}mm`,boxSizing:'border-box',width:'210mm',height:'297mm',margin:'0 auto 24px'}}>
-          <div className="w-full mb-3 px-4 shrink-0">
-            <input value={projectTitle} onChange={e=>setProjectTitle(e.target.value)}
-              className="w-full text-center bg-transparent border-none outline-none font-comic font-black text-slate-900 tracking-tight"
-              style={{fontSize:cnt>12?'22px':'28px'}}/>
-          </div>
-          <div className="grid w-full gap-3 flex-1 min-h-0 overflow-hidden" style={{gridTemplateColumns:`repeat(${pageCols},1fr)`,gridTemplateRows:`repeat(${rows},1fr)`}}>
-            {pageItems.map((vol,localIdx)=>{const idx=pageIndex*20+localIdx;return (
-              <div data-fit-card key={vol.id} className="relative flex flex-col items-center justify-center p-2 border border-slate-100 rounded-2xl bg-slate-50/20 group hover:border-indigo-300 transition-all overflow-hidden min-h-0">
-                <div className="absolute top-1 right-1 flex flex-col gap-1 no-print opacity-0 group-hover:opacity-100 transition-all z-40">
-                  <button onClick={()=>setConfirmModal({isOpen:true,isDanger:true,title:'Kolajdan Çıkar',message:`${vol.name} silinecek.`,onConfirm:()=>{const u=volunteers.filter(v=>v.id!==vol.id);syncVolunteers(u);setVolunteers(u);setConfirmModal(p=>({...p,isOpen:false}));},onCancel:()=>setConfirmModal(p=>({...p,isOpen:false}))})} className="p-1 bg-white text-red-500 rounded-full shadow-sm border border-red-50 hover:scale-110"><Trash2 size={10}/></button>
-                  <button onClick={()=>{const nv=[...volunteers];const t=idx-1;if(t>=0){const tmp=nv[idx];nv[idx]=nv[t];nv[t]=tmp;setVolunteers(nv);}}} disabled={idx===0} className="p-1 bg-white text-indigo-600 rounded-full shadow-sm border border-indigo-50 hover:scale-110 disabled:opacity-30"><ChevronUp size={10}/></button>
-                  <button onClick={()=>{const nv=[...volunteers];const t=idx+1;if(t<nv.length){const tmp=nv[idx];nv[idx]=nv[t];nv[t]=tmp;setVolunteers(nv);}}} disabled={idx===volunteers.length-1} className="p-1 bg-white text-indigo-600 rounded-full shadow-sm border border-indigo-50 hover:scale-110 disabled:opacity-30"><ChevronDown size={10}/></button>
-                </div>
-                <div className="relative w-full h-full min-h-0 mb-1 overflow-hidden rounded-xl bg-white border border-slate-100 shadow-sm flex items-center justify-center">
-                  <InteractivePhoto id={vol.id} src={vol.photo} scale={vol.scale} translateX={vol.translateX} translateY={vol.translateY} onUpdate={(id,s,x,y)=>setVolunteers(prev=>prev.map(v=>v.id===id?{...v,scale:s,translateX:x,translateY:y}:v))}/>
-                  {!vol.photo && <input type="file" accept="image/*" onChange={e=>{const f=e.target.files[0];if(f)readPhoto(f).then(photo=>setVolunteers(prev=>prev.map(v=>v.id===vol.id?{...v,photo,scale:1,translateX:0,translateY:0}:v))).catch(err=>onNotify(err.message));}} className="absolute inset-0 opacity-0 cursor-pointer z-30"/>}
-                  {vol.photo && (
-                    <label className="absolute top-1 left-1 no-print opacity-0 group-hover:opacity-100 transition-opacity p-2 bg-white/90 rounded-full text-indigo-600 cursor-pointer z-40 shadow-sm">
-                      <Upload size={12}/>
-                      <input type="file" accept="image/*" className="hidden" onChange={e=>{const f=e.target.files[0];if(f)readPhoto(f).then(photo=>setVolunteers(prev=>prev.map(v=>v.id===vol.id?{...v,photo,scale:1,translateX:0,translateY:0}:v))).catch(err=>onNotify(err.message));}}/>
-                    </label>
-                  )}
-                </div>
-                <div className="w-full px-1 text-center leading-none shrink-0">
-                  <textarea data-fit-text value={vol.name} onChange={e=>setVolunteers(prev=>prev.map(v=>v.id===vol.id?{...v,name:e.target.value}:v))}
-                    className="screen-only w-full text-center bg-transparent border-none outline-none font-comic font-bold text-slate-800 resize-none overflow-hidden p-0 m-0"
-                    style={{fontSize:`${Math.min(globalNameSize,vol.name.length>26?14:globalNameSize)}px`,height:'3em'}} rows={2}/><p className="print-only font-comic font-bold text-slate-800" style={{fontSize:`${Math.min(globalNameSize,vol.name.length>26?14:globalNameSize)}px`,overflowWrap:'anywhere'}}>{vol.name}</p>
-                </div>
-              </div>
-            );})}
-          </div>
-          <div className="w-full shrink-0 flex flex-col items-center gap-1 bg-white pt-2 mt-auto">
-            <div className="flex items-center gap-4 text-indigo-600 font-black tracking-[0.2em] text-[16px]">
-              <span className="w-10 h-px bg-indigo-200"/>
-              <Smile size={20} className="text-indigo-400"/>
-              <span className="uppercase">MEKTUPLARINI BEKLİYORUZ</span>
-              <span className="w-10 h-px bg-indigo-200"/>
-            </div>
-            <div className="w-full border-t border-slate-200 pt-1 flex justify-center">
-              <input type="text" value={projectAddress} onChange={e=>setProjectAddress(e.target.value)}
-                className="w-full bg-transparent border-none outline-none font-sans text-slate-500 text-center font-500"
-                style={{fontSize:cnt>12?'11px':'15px'}}/>
-            </div>
-          </div>
-        </div>;})}
-      </div>
-    </div>
-  );
-}
-
 // ─── ANA UYGULAMA ─────────────────────────────────────────────────────────────
 export default function ProkordiManagerApp() {
-  const [activeTab,    setActiveTab]    = useState('scheduler');
+  const [activeTab,    setActiveTab]    = useState('home');
+  const [dataVersion,setDataVersion]=useState(0);
+  const [sessions,setSessions]=useState(loadSessions);
+  const [sessionId,setSessionId]=useState(()=>db.load('prokordi_active_session_v1','legacy'));
+  const changeSessions=useCallback(list=>{saveSessions(list);setSessions(list);},[]);
+  const selectSession=id=>{db.flush();db.save('prokordi_active_session_v1',id,0);setSessionId(id);};
   const [notification, setNotification] = useState(null);
   const [dark,         setDark]         = useState(() => db.load(DB_KEYS.DARK_MODE, false));
   const [cacheModal,   setCacheModal]   = useState(false);
 
   useEffect(() => { db.save(DB_KEYS.DARK_MODE, dark); }, [dark]);
+  useEffect(()=>{saveSessions(sessions);},[sessions]);
 
   useEffect(()=>{const warn=()=>setNotification('Tarayıcı depolama alanı dolu. Değişiklikler henüz kalıcı kaydedilemedi; yedek indirin ve fotoğrafları küçültün.');window.addEventListener('prokordi-storage-error',warn);return()=>window.removeEventListener('prokordi-storage-error',warn);},[]);
+  useEffect(()=>{const refresh=e=>{if(e.key==='prokordi_sessions_v1')setSessions(loadSessions());setDataVersion(v=>v+1);};window.addEventListener('storage',refresh);return()=>window.removeEventListener('storage',refresh);},[]);
   const showNotify = msg => { setNotification(msg); setTimeout(()=>setNotification(null), 3500); };
 
   const clearAllCache = () => {
@@ -1713,11 +1278,11 @@ export default function ProkordiManagerApp() {
 
   const renderContent = () => {
     switch(activeTab) {
-      case 'scheduler': return <InfinityScheduler onNotify={showNotify} dark={dark}/>;
-      case 'badges':    return <NameTagApp onNotify={showNotify} dark={dark}/>;
-      case 'collage':   return <CollageApp onNotify={showNotify} dark={dark}/>;
+      case 'scheduler': return <InfinityScheduler key={sessionId} sessionId={sessionId} sessions={sessions} dataVersion={dataVersion} onNotify={showNotify} dark={dark}/>;
+      case 'badges':    return <NameBadges key={sessionId} sessionId={sessionId} onNotify={showNotify}/>;
+      case 'collage':   return <TeamCollage onNotify={showNotify}/>;
       case 'minutes':   return <Checklist/>;
-      default:          return <InfinityScheduler onNotify={showNotify} dark={dark}/>;
+      default:          return <InfinityScheduler key={sessionId} sessionId={sessionId} sessions={sessions} dataVersion={dataVersion} onNotify={showNotify} dark={dark}/>;
     }
   };
 
@@ -1727,6 +1292,8 @@ export default function ProkordiManagerApp() {
   const borderClr = dark ? '#1e293b' : '#e2e8f0';
   const textPrimary = dark ? '#e2e8f0' : '#1e293b';
   const textMuted   = dark ? '#64748b' : '#94a3b8';
+
+  if(activeTab==='home')return <><style>{buildCSS(false)}</style><Welcome onOpen={setActiveTab}><SessionBar sessions={sessions} currentId={sessionId} onSelect={selectSession} onChange={changeSessions}/></Welcome></>;
 
   return (
     <div className="app-shell" style={{ display:'flex', height:'100vh', background:appBg, color:textPrimary, overflow:'hidden' }}>
@@ -1764,13 +1331,14 @@ export default function ProkordiManagerApp() {
             <div>
               <div style={{ fontSize:13, fontWeight:800, color:textPrimary, letterSpacing:'-.02em', lineHeight:1.2 }}>ProKordi</div>
               <div style={{ fontSize:13, fontWeight:800, color:textPrimary, letterSpacing:'-.02em', lineHeight:1.2 }}>Manager</div>
-              <div style={{ fontSize:9, fontWeight:700, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.1em', marginTop:1 }}>B.A.L.K.I.Z. v6.0</div>
+              <div style={{ fontSize:9, fontWeight:700, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.1em', marginTop:1 }}>B.A.L.K.I.Z. v7.0</div>
             </div>
           </div>
         </div>
 
         {/* Nav */}
         <nav style={{ flex:1, padding:'10px 12px', marginTop:8 }} className="space-y-1">
+          <SidebarItem dark={dark} id="home" icon={<Sparkles size={16}/>} label="Başlangıç" active={activeTab} onClick={setActiveTab}/>
           <SidebarItem dark={dark} id="scheduler" icon={<Calendar size={16}/>}    label="Program"         active={activeTab} onClick={setActiveTab}/>
           <SidebarItem dark={dark} id="badges"    icon={<Users size={16}/>}       label="İsimlik"         active={activeTab} onClick={setActiveTab}/>
           <SidebarItem dark={dark} id="collage"   icon={<ImageIcon size={16}/>}   label="Görsel Kolaj"    active={activeTab} onClick={setActiveTab}/>
@@ -1784,12 +1352,6 @@ export default function ProkordiManagerApp() {
             style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'8px 12px', borderRadius:12, border:'none', cursor:'pointer', background:dark?'rgba(99,102,241,.15)':'rgba(99,102,241,.06)', color:dark?'#a5b4fc':'#6366f1', transition:'all .2s' }}>
             {dark ? <Sun size={15}/> : <Moon size={15}/>}
             <span style={{ fontSize:12, fontWeight:600 }}>{dark?'Aydınlık Mod':'Karanlık Mod'}</span>
-          </button>
-          {/* Clear cache */}
-          <button onClick={()=>setCacheModal(true)}
-            style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'8px 12px', borderRadius:12, border:'none', cursor:'pointer', background:'rgba(239,68,68,.06)', color:'#ef4444', transition:'all .2s' }}>
-            <Trash size={15}/>
-            <span style={{ fontSize:12, fontWeight:600 }}>Cache'i Temizle</span>
           </button>
           <div style={{ textAlign:'center', fontSize:9, color:textMuted, paddingTop:4 }}>
             © 2026 <a href="https://github.com/ragno-typhojem" target="_blank" rel="noopener noreferrer" style={{ color:'#6366f1', fontWeight:600 }}>Mustafa Berke Simsekler</a>
@@ -1818,6 +1380,7 @@ export default function ProkordiManagerApp() {
 
         {/* Content */}
         <div style={{ padding:24, minHeight:'calc(100vh - 60px)', maxWidth:1700, margin:'0 auto' }} id="printable-section" className="print:p-0">
+          {(activeTab==='scheduler'||activeTab==='badges')&&<SessionBar sessions={sessions} currentId={sessionId} onSelect={selectSession} onChange={changeSessions}/>}
           {renderContent()}
         </div>
 

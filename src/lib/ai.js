@@ -15,6 +15,7 @@ export const compactState = ({ activities = [], volunteers = [], timeSlots = [],
       `${a.name}${a.isMust ? '*' : ''} kutu:${a.boxCount ?? '-'} sinif:${(a.allowedGrades || []).join('') || 'hepsi'}`),
     gonulluler: volunteers.map((v) =>
       `${v.name} → ${(v.capabilities || []).map((id) => A.get(id)).filter(Boolean).join(', ') || 'yetkinlik yok'}`),
+    topluSunumlar: timeSlots.filter(s=>s.type==='presentation').map(s=>`${s.start}-${s.end}: ${s.title||'Sunum'}`),
     dersler: lessons.map((s, i) => `${i + 1}. ${s.start}-${s.end}`),
     siniflar: classes.map((c) => {
       const dolu = lessons.map((s, i) => {
@@ -35,6 +36,7 @@ SADECE geçerli JSON döndür: {"message": string, "actions": Action[]}. Başka 
 KURALLAR
 - Yalnızca açık talebi aksiyona çevir. Belirsiz kişi, sınıf veya saatte tahmin etme; kısa bir netleştirme sorusu sor.
 - Zorunlu (must) yalnızca koordinatörün açık talebiyle işaretlenir. Kutu sayısı, uygun düzey ve yetkinlik uydurma.
+- Gün çizelgesi hazırlanırken en başa toplu sunum konabilir: load_template presentationMinutes (0 ise sunum yok). Sunum sırasında sınıflara etkinlik ve gönüllü atama.
 - Anaokulu sınıfı oluşturma. Sınıf adı 5-H, 12-F gibi serbest olabilir.
 - Programda boşluk, çakışma veya eşitsizlik varsa çözümü öner; gerçek sonucu uygulama hesaplar. Uygulamadan önce tamamlandı deme.
 - Gönüllüye etkinlik atamak onun yetkinliğini değiştirmez. Yetkinlik değişikliği için açık talep gerekir.
@@ -56,7 +58,7 @@ ACTION TÜRLERİ
 {"type":"add_timeslot","start":"09:00","duration":40,"slotType":"lesson|break|lunch"}
 {"type":"update_timeslot","slot":1,"start":"08:00","end":"08:40"}
 {"type":"clear_timeslots"}
-{"type":"load_template","start":"08:00","lessons":6,"duration":40,"breakMinutes":10,"lunchMinutes":60,"lunchAfter":3}
+{"type":"load_template","start":"08:00","lessons":6,"duration":40,"breakMinutes":10,"lunchMinutes":60,"lunchAfter":3,"presentationMinutes":30}
 {"type":"set_slot","class":"1-A","slot":3,"activity":"Origami","volunteer":"Eda","lock":false}
 {"type":"clear_slot","class":"","slot":1}
 {"type":"swap","classA":"","slotA":1,"classB":"","slotB":2}
@@ -129,6 +131,7 @@ const NO_CLASS = { activityId: 'NO_CLASS', name: 'DERS YOK', cat: 'none', isMust
 
 export function applyActions(state, actions) {
   let s = {
+    reservations:state.reservations||[],
     activities: [...state.activities],
     volunteers: [...state.volunteers],
     timeSlots: [...state.timeSlots],

@@ -1,31 +1,58 @@
-# ProKordi Manager 6
+# ProKordi Manager 7
 
-İLKYAR etkinlik programı, gönüllü dağılımı, isimlik, kolaj ve yükleme kontrol listesi.
+İLKYAR koordinatörleri için sade program, katlanabilir isimlik, ortak kolaj ve 5 günlük depo takibi.
 
-## Kullanım
+## Hızlı kullanım
 
-1. **Etkinlikler:** Drive kaynak bağlantıları ve hazırlık notları görünür. Yeni kayıtların kutu sayılarını ve uygun sınıf düzeylerini girip hazır olduğunu işaretleyin. Zorunlu seçimini yalnızca koordinatör yapar. Eski kullanıcı seçimleri korunur.
-2. **Gönüllüler:** İsim ve gerçek yetkinlikleri girin veya Excel/CSV/yapıştırma ile aktarın. Bir etkinlik atanması kişiye otomatik yetkinlik kazandırmaz.
-3. **Sınıf & Zaman:** 1–8 sınıflarda A–H hızlı seçimleri; 5-H, 9-C, 12-F gibi serbest sınıf adları. Yeni anaokulu kategorisi yok; eski kayıtlar silinmez. 08.00 veya başka başlangıç, etkinlik sayısı, süre, geçiş ve yemek arası ayarlanabilir. Saatler taslakta düzenlenir ve doğrulandıktan sonra kaydedilir. Atamalı satır kimlikleri korunur.
-4. **Program:** Dağıtım önce doluluğu, sonra koordinatörün zorunlu seçimlerini, çeşitliliği ve görev dengesini değerlendirir. Kutu, düzey, yetkinlik ve kişi çakışmalarını denetler. Uygun boş gönüllüler yardımcı olarak atanır. Her kişinin sorumluluk/yardımcı sayısı, dakika ve çeşitliliği raporlanır. Kaynaklar yetmiyorsa boşluk veya tekrar açıkça bildirilir; kusursuz eşitlik garantisi verilmez.
-5. **İçe aktarma:** XLSX, CSV, TSV ve metin; ayırıcılar ve tırnaklı alanlar desteklenir. Önizlemeden sonra uygulanır. Aynı sınıf/saat hücresi güncellenirken eşleşmeyen sınıflar/saatler korunur. Son program değişikliği geri alınabilir. JSON yedeği program, isimlik, kolaj ve kontrol listesini içerir.
-6. **Balkız:** “Programı doldur”, “Boş kalan yerleri doldur”, “Programı kontrol et” ve “Programı dengele” temel işleri yerelde çalıştırır. Serbest istekler `/api/chat` üzerinden Groq kullanır. Yanıtın uygulanabilir biçimi doğrulanır, gerçek işlem kaydı ve hesaplanan geri bildirim gösterilir. İstek sürerken program değişirse eski yanıt değişiklikleri ezmez. Ağ veya model hatasında program korunur.
-7. **İsimlik:** Gerçek mm ölçülerine göre A4 sayfalama. Varsayılan sıra her grup için isimler → arka yüzler → aynı isimler. Tekrar ve arka yüz sütun aynalaması isteğe bağlıdır. İsimleri, kart boyutunu, aralıkları ve yazı konumlarını düzenleyebilirsiniz. Görseller uygulamayla birlikte yerel sunulur.
-8. **Kolaj:** A4 dikey, sayfa başına en fazla 20 kişi, eşit hücreler. Başlık/adres, isimler, sıralama, fotoğraf ölçeği/konumu ve kenar payları düzenlenebilir. Büyük ekip yeni sayfalara ayrılır. Fotoğraf yükleme 12 MB ile sınırlı ve tarayıcıda küçültülür.
-9. **Sayfa kontrolü:** İsimlik ve kolajda Balkız görünen metinlerin gerçek taşmalarını ve yüklenmeyen görselleri bildirir. Tek tuşla yazı boyutu düzeltilebilir; son düzenleme yine kullanıcıdadır.
-10. **Kontrol Listesi:** Tutanak bölümü yerine etkinlik kutuları, ses/görüntü, belgeler ve son kontrol maddeleri bulunur. Tik, adet, sorumlu ve not düzenlenebilir; özel maddeler eklenebilir. Yatay A4 çıktısı alınır.
+Açılışta Balkız hazır ve kısa bir karşılama gösterir. Bekleme veya yapay zekâ isteği yoktur. Program, İsimlik, Ekip Kolajı ve Depo Listesi arasından seçim yapılır. Başlangıç düğmesiyle bu ekrana geri dönülebilir.
 
-## Drive kaynakları (salt okunur inceleme, 18 Ekim 2026)
+### Ekip / oturum
 
-- [Güncel Kılavuzlar](https://drive.google.com/drive/folders/1MRYaFiQ06PFLR8RGC9vknxNJpwSbUYvj)
-- [10.10.2026 Etkinlik Geliştirme Notları](https://drive.google.com/file/d/1X-82TCrEikWdVxsE_0Y09f7x993SZ20r/view)
-- [Koordinatör Kılavuzu](https://docs.google.com/document/d/1KxPbOq6TdqLI4Ck9H3X1qf2ARf-cdxl-/edit)
+Program ve isimlik için ayrı ekipler oluşturulabilir; her ekibin gönüllüleri, yetkinlikleri, etkinlik kutu sayıları, sınıfları, saatleri, atamaları ve Balkız geçmişi ayrı saklanır. İlk oturum eski kayıtların kullandığı anahtarları korur. Yeni ekip boş başlar; kutu ve uygunluk bilgileri koordinatörce doğrulanır.
 
-Katalog bir tarihli kaynak özetidir; Drive ile otomatik senkronizasyon yoktur. Kılavuzun klasörde bulunması etkinliğin hazırlık onayı anlamına gelmez. Tarih/arkeoloji/tiyatro/origami gibi geliştirme notları ayrı görünür. Etkinlik 101 ekip içi hazırlık toplantısı olduğundan okul etkinliği diye eklenmedi. Drive üzerinde hiçbir dosya oluşturulmadı, değiştirilmedi veya silinmedi.
+Kolaj ve depo listesi ortak kalır. Aynı gün farklı ekiplerde aynı gönüllünün çakışan saatleri denetlenir; toplu sunumlar da bu kontrole girer. Otomatik dağıtım başka ekipte görevli gönüllüyü aynı saate koymaz. Diğer sekmeden gelen kayıt değişiklikleri çakışma hesabında yenilenir.
 
-## Saklama ve doğrulama
+Oturumlar bu tarayıcıdaki çalışma alanlarıdır. Kullanıcı hesabı veya farklı cihazlar arasında sunucu senkronizasyonu eklenmemiştir.
 
-Veriler bu tarayıcının localStorage alanındadır; hesaplar veya cihazlar arası sunucu senkronizasyonu yoktur. Depolama hatası görünür uyarı üretir. Fotoğraflar yalnızca kolaj verisinde saklanır; isimlik ölçüleri ve kolaj ayarları sekme değişimlerinde korunur. Düzenli JSON yedeği indirin.
+### Program
+
+1. Gönüllüleri ve gerçek yetkinliklerini girin veya liste / Excel / CSV içe aktarın.
+2. Sınıfları virgülle ya da alt alta yazın: 1-A, 5-H, 8-B. Günü başlangıç saati, açılış sunumu, etkinlik sayısı, süreler ve yemek arasına göre hazırlayın.
+3. Etkinliklerin kutu ve sınıf düzeylerini doğrulayın; zorunluları koordinatör seçer. Programı dağıt / dengele düğmesine basın.
+
+Varsayılan gün 08.00'de 30 dakikalık ortak sunum ve 10 dakikalık geçişle başlar. Sunum 0 yapılarak kaldırılabilir. Mevcut çizelgeye sunum eklendiğinde saatler ileri kayar ve mevcut saat kimlikleri ile sınıf atamaları korunur. Aynı gün sınırını aşan veya çakışan çizelge kaydedilmez.
+
+Sunum ve aralara sınıf etkinliği dağıtılmaz. Dağıtım doluluğu, zorunlu etkinlikleri, çeşitliliği ve sorumlu görevlerinin dengesini değerlendirir. Gerekli yetkinliği olan boş kişiler yardımcı olabilir. Tam eşitliği engelleyen koşullar açıkça bildirilir. Sorumlu sayıları ve toplam katılım ayrı raporlanır.
+
+“Boşları doldur” tamamlanmış atamaları ve yardımcılarını korur; etkinliği belli olup sorumlusu boş olan hücreye uygun sorumlu bulabilir. Kilitler korunur. Aynı kişinin iki kaydı, yetersiz kutu, eksik yetkinlik, eski saatlere bağlı atamalar ve uygun olmayan sınıf düzeyleri raporlanır. Sürükleyerek taşıma da çalışır.
+
+İçe aktarma önizlemeden sonra uygulanır. Aynı sınıf/saat hücresi güncellenirken eşleşmeyen kayıtlar korunur. Boş program hücresi teneffüs sanılmaz; açıkça yazılmış sunumlar tanınır. Son program değişikliği geri alınabilir. Dosya işlemleri ayrıntı menüsündedir.
+
+Balkız yerel dağıtım ve kontrol komutlarını ağ kullanmadan çalıştırır. Serbest Türkçe istekler sunucu üzerinden Groq'a gider. Sadece gerçekten uygulanan işlemler raporlanır. İstek veya dağıtım sırasında kayıt değişmişse eski hesap son düzenlemeleri ezmez.
+
+### Katlanabilir isimlik
+
+Varsayılan bitmiş kart yüzü **86 × 54 mm**; yan yana çift yüz **172 × 54 mm**. Böylece 90 × 60 mm'lik kart yuvasında pay kalır. Aynı gönüllünün tam adı iki yüzde de aynıdır. Bir satırı kesip merkezdeki çizgiden katlayın. 22 isim, 44 yüz ve 5 A4 sayfadır.
+
+Kart genişliği 70–90 mm, yüksekliği 40–60 mm arasında ayarlanabilir. Font, logo ve alt bilgi dışında kalan güvenli alanda gerçek ölçümle sığdırılır. Eski sürümdeki isimler → arka yüz → isimler sayfa dizisi bu katlanabilir düzenle değiştirilmiştir. Görseller yerel sunulur. Baskıda A4 ve %100 / gerçek boyut seçin; fiziksel kartlık ve yazıcı için bir deneme kartı basın.
+
+### Ekip kolajı
+
+Prof. Dr. Hüseyin Vural ilk sırada daima bulunur; adı girilmemişse eklenir, yinelenen kayıtları tekleştirilir ve varsa mevcut fotoğrafı korunur. Sabit kayıt kolajdan çıkarılamaz. Programa otomatik gönüllü olarak eklenmez.
+
+A4 dikey sayfada 12 eşit alan vardır. Büyük ekipler aynı ölçülü alanlarla yeni sayfaya geçer. Başlık, isim, fotoğraf ve alt bilgi bölgeleri ayrı ölçülendirilir. İsimler gerçek ölçümle sığdırılır. Kişiye tıklayarak ad / fotoğraf düzenlenir; fotoğraf sürüklenir veya yakınlaştırılır. Görsel dosyaları en fazla 12 MB olup tarayıcıda küçültülür.
+
+### 5 günlük depo listesi
+
+Yalnızca nesne adı ve her gün için **İndi / Bindi** tikleri vardır. Ekranda bir gün seçilir; yatay A4 çıktıda beş gün birlikte görünür. Tüm katalog etkinliklerinin kutuları, projeksiyon ve ses sistemi, HDMI / VGA / ses kabloları, güç ve atölye malzemeleri başlangıç listesinde bulunur. Nesne eklenebilir, adı düzenlenebilir, kaldırılabilir; son kaldırma geri alınabilir. Eski listenin verileri eski kayıt anahtarında korunur.
+
+## Kaynaklar ve sınırlar
+
+Etkinlik kaynakları 18 Ekim 2026 tarihinde salt okunur incelenen [Güncel Kılavuzlar](https://drive.google.com/drive/folders/1MRYaFiQ06PFLR8RGC9vknxNJpwSbUYvj), [10.10.2026 geliştirme notları](https://drive.google.com/file/d/1X-82TCrEikWdVxsE_0Y09f7x993SZ20r/view) ve [Koordinatör Kılavuzu](https://docs.google.com/document/d/1KxPbOq6TdqLI4Ck9H3X1qf2ARf-cdxl-/edit) özetidir. Klasörün mevcut olması etkinliğin hazır olduğu anlamına gelmez. Drive ile otomatik senkronizasyon yoktur. Drive üzerinde dosya oluşturulmadı, değiştirilmedi veya silinmedi.
+
+Veriler localStorage'da saklanır. Depolama hatası görünür uyarı üretir. Programdan indirilen JSON, seçili oturumun programı ve ortak baskı / depo verilerini yedekler. Diğer ekip oturumlarının programları kendi oturumlarından ayrıca yedeklenmelidir.
+
+## Geliştirme
 
 ```sh
 npm ci
@@ -34,4 +61,4 @@ npm run build
 npm start
 ```
 
-Vercel projesinde serbest dil yanıtları için sunucu tarafında `GROQ_API_KEY` gerekir; anahtar istemciye gömülmez. Fiziksel çift taraflı baskı hizalaması yazıcıya bağlıdır; önce bir grup üzerinde deneme baskısı alın.
+Serbest dil için Vercel'de sunucu tarafında `GROQ_API_KEY` gerekir. Anahtar istemciye gömülmez. Fiziksel yazıcı / kartlık uyumu ve son baskı hizası cihaz üzerinde ayrıca doğrulanmalıdır.

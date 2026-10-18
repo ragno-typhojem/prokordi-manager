@@ -157,11 +157,12 @@ export function toStatePatch({ kind, rows }, state) {
     const end = m[3] ? `${m[3].padStart(2, '0')}:${m[4]}` : null;
     const cells = r.slice(1, names.length + 1);
     const joined = norm(cells.join(' '));
-    const type = /ogle|yemek|lunch/.test(joined) ? 'lunch'
+    const type = /^(?:ilkyar )?acilis sunumu$|^sunum$|^toplu sunum|^ilkyar tanitimi$/.test(norm(cells.find(x=>String(x).trim())||'')) ? 'presentation' : /ogle|yemek|lunch/.test(joined) ? 'lunch'
       : /teneffus|mola|ara$|break/.test(joined) ? 'break'
-      : cells.every((c) => !String(c).trim()) ? 'break' : 'lesson';
+      : 'lesson';
     const old=(state.timeSlots||[]).find(s=>s.start===start && (!end || s.end===end));
-    const slot = { id: old?.id || uid(), start, end: end || start, type };
+    if(old&&type!=='lesson'&&(state.classes||[]).some(c=>c.schedule?.[old.id]?.activityId&&c.schedule[old.id].activityId!=='NO_CLASS'))throw new Error(`${start}: Atama bulunan saat sunum veya araya çevrilemez. Sınıf & Zaman bölümünden başa sunum ekleyin; atamalar ileri kaydırılarak korunur.`);
+    const slot = { id: old?.id || uid(), start, end: end || start, type, ...(type==='presentation'?{title:cells.find(x=>String(x).trim()),audience:'all'}:{}) };
     timeSlots.push(slot);
     bodyRows.push({ slot, cells });
   });
@@ -187,7 +188,7 @@ export function toStatePatch({ kind, rows }, state) {
       const volName = mm ? (mm[2] || mm[3]) : '';
       const vol = volName ? getVol(volName) : null;
       if (!act) return;
-      if (vol && !vol.capabilities.includes(act.id)) vol.capabilities = [...vol.capabilities, act.id];
+
       classes[i].schedule[slot.id] = {
         activityId: act.id, name: act.name, cat: act.cat || 'science', isMust: !!act.isMust,
         lead: vol?.name || '-', leadId: vol?.id || 'none', support: [],
