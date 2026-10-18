@@ -1293,7 +1293,23 @@ export default function ProkordiManagerApp() {
   const textPrimary = dark ? '#e2e8f0' : '#1e293b';
   const textMuted   = dark ? '#64748b' : '#94a3b8';
 
-  if(activeTab==='home')return <><style>{buildCSS(false)}</style><Welcome onOpen={setActiveTab}><SessionBar sessions={sessions} currentId={sessionId} onSelect={selectSession} onChange={changeSessions}/></Welcome></>;
+  const resetDialog = cacheModal && (
+        <div role="dialog" aria-modal="true" aria-labelledby="reset-title" className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-fadeIn">
+          <div className="rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-scaleIn dk-card dk-border border">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2.5 rounded-xl bg-red-50 text-red-500"><Database size={20}/></div>
+              <h3 id="reset-title" className="text-base font-700 dk-text">Tamamen sıfırla</h3>
+            </div>
+            <p className="text-sm dk-text-muted mb-6 leading-relaxed">Bu tarayıcıdaki tüm ekipler, programlar, gönüllüler, etkinlikler, isimlikler, kolaj fotoğrafları, depo listesi, sohbetler ve ayarlar <strong className="text-red-500">kalıcı olarak</strong> silinecek. Geri alınamaz. Drive ve GitHub dosyalarına dokunulmaz.</p>
+            <div className="flex justify-end gap-2">
+              <button onClick={()=>setCacheModal(false)} className="px-4 py-2 rounded-xl text-sm font-600 bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">İptal</button>
+              <button onClick={clearAllCache} className="px-4 py-2 rounded-xl text-sm font-700 text-white bg-red-500 hover:bg-red-600 transition-all active:scale-95">Tümünü Sil ve Sıfırla</button>
+            </div>
+          </div>
+        </div>
+      );
+
+  if(activeTab==='home')return <><style>{buildCSS(false)}</style>{resetDialog}<Welcome onOpen={setActiveTab}><button onClick={()=>setCacheModal(true)} style={{float:'right',color:'#b91c1c',fontSize:12,padding:8}}>Tamamen sıfırla</button><SessionBar sessions={sessions} currentId={sessionId} onSelect={selectSession} onChange={changeSessions}/></Welcome></>;
 
   return (
     <div className="app-shell" style={{ display:'flex', height:'100vh', background:appBg, color:textPrimary, overflow:'hidden' }}>
@@ -1303,23 +1319,7 @@ export default function ProkordiManagerApp() {
         @media print{html,body,#root,.app-shell,main,#printable-section{height:auto!important;min-height:0!important;overflow:visible!important;background:white!important;padding:0!important;margin:0!important;max-width:none!important;display:block!important}.screen-only{display:none!important}.print-only{display:block!important}.print-page{break-after:page;page-break-after:always}.print-page:last-child{break-after:auto;page-break-after:auto}[class*=space-y-] > *{margin-top:0!important;margin-bottom:0!important}.animate-fadeIn,.animate-scaleIn,.animate-slideUp{animation:none!important;transform:none!important}.collage-print-strict{break-after:page!important}.collage-print-strict:last-child{break-after:auto!important}}
       `}</style>
 
-      {/* ── Cache Clear Modal ── */}
-      {cacheModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-fadeIn">
-          <div className="rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-scaleIn dk-card dk-border border">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-2.5 rounded-xl bg-red-50 text-red-500"><Database size={20}/></div>
-              <h3 className="text-base font-700 dk-text">Tüm Cache'i Temizle</h3>
-            </div>
-            <p className="text-sm dk-text-muted mb-6 leading-relaxed">Tüm veriler (program, gönüllüler, etkinlikler, sohbet geçmişi) <strong className="text-red-500">kalıcı olarak</strong> silinecek ve uygulama sıfırlanacak.</p>
-            <div className="flex justify-end gap-2">
-              <button onClick={()=>setCacheModal(false)} className="px-4 py-2 rounded-xl text-sm font-600 bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">İptal</button>
-              <button onClick={clearAllCache} className="px-4 py-2 rounded-xl text-sm font-700 text-white bg-red-500 hover:bg-red-600 transition-all active:scale-95">Tümünü Sil ve Sıfırla</button>
-            </div>
-          </div>
-        </div>
-      )}
-
+      {resetDialog}
       {/* ── Sidebar ── */}
       <aside className="app-sidebar print:hidden shrink-0" style={{ width:220, background:sidebarBg, borderRight:`1px solid ${borderClr}`, display:'flex', flexDirection:'column', zIndex:20 }} >
         {/* Logo */}
@@ -1370,6 +1370,7 @@ export default function ProkordiManagerApp() {
             <h2 style={{ fontSize:15, fontWeight:700, color:textPrimary }}>{tabMeta[activeTab]?.label}</h2>
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <button onClick={()=>setCacheModal(true)} aria-label="Tamamen sıfırla" title="Tamamen sıfırla" style={{padding:8,borderRadius:10,color:'#b91c1c',background:'#fef2f2',border:'none',cursor:'pointer'}}><Trash size={17}/></button>
             <Saat dark={dark}/>
             <button onClick={()=>window.print()}
               style={{ display:'flex', alignItems:'center', gap:7, padding:'8px 16px', borderRadius:12, fontSize:13, fontWeight:700, color:'white', background:'#1e293b', border:'none', cursor:'pointer', boxShadow:'0 1px 4px rgba(0,0,0,.1)', transition:'all .2s' }}>

@@ -44,9 +44,13 @@ export const db = {
   },
 
   clearAll() {
-    db.flush();
+    // Cancel pending writes so beforeunload cannot restore deleted records.
+    timers.forEach(clearTimeout);
+    timers.clear();
     cache.clear();
-    Object.values(DB_KEYS).forEach((k) => { try { localStorage.removeItem(k); } catch {} });
+    const legacy = new Set([...Object.values(DB_KEYS), 'balkiz_chat_v1']);
+    const keys = Object.keys(localStorage).filter(key => key.startsWith('prokordi_') || legacy.has(key));
+    keys.forEach(key => localStorage.removeItem(key));
   },
 };
 
