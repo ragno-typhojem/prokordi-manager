@@ -67,12 +67,6 @@ export const CATALOG = [
     "catalogStatus": "10.10.2026: Altın yağmuru deneyine alternatif aranıyor."
   },
   {
-    "name": "İlkyar Tanıtımı",
-    "sourceUrl": "https://drive.google.com/drive/folders/1qT_eYwtkkbD5WWuFkXAqg9nnjNvvS-yD",
-    "sourceDate": "2026-10-18",
-    "catalogStatus": "Güncel Kılavuzlar klasöründe mevcut. Sınıf düzeyi, kutu ve gönüllü hazırlığı koordinatörce doğrulanmalı."
-  },
-  {
     "name": "Yaratıcı Drama",
     "sourceUrl": "https://drive.google.com/drive/folders/1d6OmZecf2Cp1zxTknX-rGIeTio0M4sJs",
     "sourceDate": "2026-10-18",
@@ -91,7 +85,8 @@ export const CATALOG = [
     "catalogStatus": "Güncel Kılavuzlar klasöründe mevcut. Sınıf düzeyi, kutu ve gönüllü hazırlığı koordinatörce doğrulanmalı."
   },
   {
-    "name": "Pinoo Minoo",
+    "name": "Pino Mino İlkokul",
+    "cat": "science",
     "sourceUrl": "https://drive.google.com/file/d/1X-82TCrEikWdVxsE_0Y09f7x993SZ20r/view",
     "sourceDate": "2026-10-18",
     "catalogStatus": "Güncel Kılavuzlar klasöründe mevcut. Sınıf düzeyi, kutu ve gönüllü hazırlığı koordinatörce doğrulanmalı."
@@ -125,19 +120,24 @@ export const CATALOG = [
     "sourceUrl": "https://drive.google.com/file/d/1X-82TCrEikWdVxsE_0Y09f7x993SZ20r/view",
     "sourceDate": "2026-10-18",
     "catalogStatus": "10.10.2026: Geliştirme çalışması ve VibraMotor notu mevcut."
-  }
+  },
+  {name:'Pino Mino Atölye',cat:'workshop',catalogStatus:'Koordinatör talebiyle eklenen atölye. Uygun düzeyleri seçin.'},
+  {name:'Yapay Zeka Atölyesi',cat:'workshop',catalogStatus:'Koordinatör talebiyle eklenen atölye. Uygun düzeyleri seçin.'}
+
 ];
 
-const aliases = { 'robotik':'robot', 'robotik kodlama':'robot', 'kimya deneyleri':'kimya', 'fizik deneyleri':'fizik fen', 'pino mino':'pinoo minoo', 'vr sanal gerceklik':'vr' };
-const matchName = name => aliases[norm(name)] || norm(name);
+const aliases = { 'robotik':'robot', 'robotik kodlama':'robot', 'kimya deneyleri':'kimya', 'fizik deneyleri':'fizik fen', 'pino mino':'pino mino ilkokul', 'pinoo minoo':'pino mino ilkokul', 'pino mino atolyesi':'pino mino atolye', 'yapay zeka':'yapay zeka etkinligi', 'vr sanal gerceklik':'vr' };
+export const matchName = name => aliases[norm(name)] || norm(name);
 
 // Additive migration: preserve IDs, must flags, quantities, grades, volunteers and schedules.
 export function mergeCatalog(existing = []) {
-  const result = existing.map(a => ({...a}));
+  const result = existing.map(a => /ilkyar tanitim/.test(norm(a.name)) ? {...a,cat:'presentation',planningReady:false,isMust:false} : {...a});
   CATALOG.forEach((item,i) => {
     const found = result.findIndex(a => matchName(a.name) === matchName(item.name));
-    if (found >= 0) result[found] = {...result[found], ...Object.fromEntries(Object.entries(item).filter(([k])=>k!=='name'))};
-    else result.push({id:'ilkyar-2026-'+i, ...item, cat:'science', isMust:false, boxCount:0, allowedGrades:[], planningReady:false});
+    if (found >= 0) result[found] = {...result[found], ...Object.fromEntries(Object.entries(item).filter(([k])=>k!=='name')), ...(norm(result[found].name)==='pinoo minoo'?{name:item.name}:{}), cat:item.cat||(/atolye/.test(norm(item.name))?'workshop':'science')};
+    else result.push({id:'ilkyar-v8-'+norm(item.name).replace(/ /g,'-'), ...item, cat:/atolye/.test(norm(item.name))?'workshop':'science', isMust:false, boxCount:1, allowedGrades:[], planningReady:false});
   });
   return result;
 }
+
+export const resolveActivity=(list,name)=>list.find(a=>matchName(a.name)===matchName(name));

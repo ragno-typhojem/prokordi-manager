@@ -5,14 +5,15 @@ import { uid, norm, find, findSlot, addMin, detectGrade, cloneClasses, validateT
 import { distribute, planSummary, calculateConflicts } from './engine';
 import { parseAny, toStatePatch } from './importer';
 import { makeDay } from './templates';
+import {resolveActivity} from './catalog';
 
 // ── durumu sıkıştır (token tasarrufu: ~%80 daha az) ─────────────────────────
 export const compactState = ({ activities = [], volunteers = [], timeSlots = [], classes = [] }, warnings = []) => {
   const A = new Map(activities.map((a) => [a.id, a.name]));
   const lessons = timeSlots.filter((s) => s.type === 'lesson');
   return {
-    etkinlikler: activities.map((a) =>
-      `${a.name}${a.isMust ? '*' : ''} kutu:${a.boxCount ?? '-'} sinif:${(a.allowedGrades || []).join('') || 'hepsi'}`),
+    etkinlikler: activities.filter(a=>a.cat!=='presentation').map((a) =>
+      `${a.name}${a.isMust ? '*' : ''} kutu:${a.boxCount ?? '-'} sinif:${(a.allowedGrades || []).join(',') || 'secilmedi'} hazir:${a.planningReady!==false} tur:${a.cat||'science'}`),
     gonulluler: volunteers.map((v) =>
       `${v.name} → ${(v.capabilities || []).map((id) => A.get(id)).filter(Boolean).join(', ') || 'yetkinlik yok'}`),
     topluSunumlar: timeSlots.filter(s=>s.type==='presentation').map(s=>`${s.start}-${s.end}: ${s.title||'Sunum'}`),
@@ -37,6 +38,7 @@ KURALLAR
 - Yalnızca açık talebi aksiyona çevir. Belirsiz kişi, sınıf veya saatte tahmin etme; kısa bir netleştirme sorusu sor.
 - Zorunlu (must) yalnızca koordinatörün açık talebiyle işaretlenir. Kutu sayısı, uygun düzey ve yetkinlik uydurma.
 - Gün çizelgesi hazırlanırken en başa toplu sunum konabilir: load_template presentationMinutes (0 ise sunum yok). Sunum sırasında sınıflara etkinlik ve gönüllü atama.
+- Yeni etkinlik 1 kutu varsayımıyla eklenir. Atölyeleri cat:"workshop" ile ayır. Pino Mino İlkokul, Pino Mino Atölye ve Yapay Zeka Atölyesi ayrı kayıtlardır. İLKYAR tanıtımı bir toplu sunumdur, etkinlik oluşturma.
 - Anaokulu sınıfı oluşturma. Sınıf adı 5-H, 12-F gibi serbest olabilir.
 - Programda boşluk, çakışma veya eşitsizlik varsa çözümü öner; gerçek sonucu uygulama hesaplar. Uygulamadan önce tamamlandı deme.
 - Gönüllüye etkinlik atamak onun yetkinliğini değiştirmez. Yetkinlik değişikliği için açık talep gerekir.
@@ -50,8 +52,8 @@ ACTION TÜRLERİ
 {"type":"add_volunteer","name":"Ad Soyad","capabilities":["etkinlik adı",...]}
 {"type":"remove_volunteer","name":""}
 {"type":"set_capabilities","volunteer":"","capabilities":[""],"mode":"set|add|remove"}
-{"type":"add_activity","name":"","isMust":false,"boxCount":10,"grades":[1,2]}
-{"type":"update_activity","name":"","newName":"","isMust":true,"boxCount":5,"grades":[]}
+{"type":"add_activity","name":"","cat":"science|workshop","isMust":false,"boxCount":1,"grades":[1,2]}
+{"type":"update_activity","name":"","newName":"","isMust":true,"boxCount":5,"grades":[],"planningReady":true,"cat":"science|workshop"}
 {"type":"remove_activity","name":""}
 {"type":"add_class","name":"5-A"}
 {"type":"remove_class","name":""}
@@ -140,9 +142,9 @@ export function applyActions(state, actions) {
   const log = [];
 
   const getAct = (name, create = true) => {
-    let a = find(s.activities, name);
+    let a = resolveActivity(s.activities,name) || find(s.activities, name);
     if (!a && create && name) {
-      a = { id: uid(), name: String(name).trim(), cat: 'science', isMust: false, boxCount: 0, allowedGrades: [], planningReady:false };
+      a = { id: uid(), name: String(name).trim(), cat: 'science', isMust: false, boxCount: 1, allowedGrades: [], planningReady:false };
       s.activities = [...s.activities, a];
       log.push(`+ etkinlik ${a.name}`);
     }
@@ -201,19 +203,23 @@ export function applyActions(state, actions) {
         }
         case 'add_activity': {
           if (!a.name) break;
-          if (find(s.activities, a.name)) { log.push(`= ${a.name} zaten var`); break; }
+          if(/ilkyar tanitim/.test(norm(a.name))){log.push('? İLKYAR tanıtımını günün başlangıç sunumu olarak ekleyin.');break;}
+          if (resolveActivity(s.activities,a.name)) { log.push(`= ${a.name} zaten var`); break; }
           s.activities = [...s.activities, {
             id: uid(), name: String(a.name).trim(), cat: a.cat || 'science',
-            isMust: !!a.isMust, boxCount: a.boxCount ?? 0,
-            allowedGrades: a.grades || a.allowedGrades || [],
+            isMust: !!a.isMust, boxCount: a.boxCount ?? 1,
+            allowedGrades: a.grades || a.allowedGrades || [1,2,3,4,5,6,7,8], planningReady:true,
           }];
           log.push(`+ etkinlik ${a.name}`);
           break;
         }
         case 'update_activity': {
-          const act = find(s.activities, a.name);
+          const act = resolveActivity(s.activities,a.name) || find(s.activities, a.name);
           if (!act) { log.push(`? etkinlik yok: ${a.name}`); break; }
+          if(a.planningReady===true&&(!(Number(a.boxCount??act.boxCount)>0)||!(a.grades||a.allowedGrades||act.allowedGrades)?.length)){log.push('? Programa dahil etmek için kutu ve uygun sınıf düzeylerini belirtin.');break;}
           const patch = {
+            ...(typeof a.planningReady==='boolean'&&{planningReady:a.planningReady}),
+            ...(['science','workshop'].includes(a.cat)&&{cat:a.cat}),
             ...(a.newName && { name: a.newName }),
             ...(a.isMust != null && { isMust: !!a.isMust }),
             ...(a.boxCount != null && { boxCount: Number(a.boxCount) }),
@@ -228,7 +234,7 @@ export function applyActions(state, actions) {
           break;
         }
         case 'remove_activity': {
-          const act = find(s.activities, a.name);
+          const act = resolveActivity(s.activities,a.name) || find(s.activities, a.name);
           if (!act) { log.push(`? etkinlik yok: ${a.name}`); break; }
           s.activities = s.activities.filter((x) => x !== act);
           s.volunteers = s.volunteers.map((v) => ({ ...v, capabilities: (v.capabilities || []).filter((i) => i !== act.id) }));

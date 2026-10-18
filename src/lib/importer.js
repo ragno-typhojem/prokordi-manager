@@ -2,6 +2,7 @@
 // Kullanıcı ne yapıştırırsa yapıştırsın türü kendi anlar: program, gönüllü, etkinlik, sınıf, isim.
 
 import { uid, norm, addMin, validateTimeSlots } from './util';
+import {resolveActivity} from './catalog';
 
 const TIME = /(\d{1,2})[:.](\d{2})/;
 const TIME_RANGE = /(\d{1,2})[:.](\d{2})\s*(?:[-–—]|\s)\s*(\d{1,2})[:.](\d{2})/;
@@ -58,7 +59,7 @@ export function detectKind(rows) {
 }
 
 export function parseAny(input) {
-  const rows = Array.isArray(input) ? input : splitText(String(input));
+  const rows = (Array.isArray(input) ? input : splitText(String(input))).map(row=>{const parts=String(row[0]||'').split(/\s+[-–—]\s+/);return parts.length>1?[parts.shift(),parts.join(', '),...row.slice(1)]:row;});
   return { kind: detectKind(rows), rows };
 }
 
@@ -79,8 +80,8 @@ export function toStatePatch({ kind, rows }, state) {
   const getAct = (name) => {
     const n = String(name || '').trim();
     if (!n) return null;
-    let a = A.find(a=>norm(a.name)===norm(n));
-    if (!a) { a = { id: uid(), name: n, cat: 'science', isMust: false, boxCount: 0, allowedGrades: [], planningReady:false }; A.push(a); }
+    let a = resolveActivity(A,n);
+    if (!a) { a = { id: uid(), name: n, cat: 'science', isMust: false, boxCount: 1, allowedGrades: [], planningReady:false }; A.push(a); }
     return a;
   };
   const getVol = (name) => {

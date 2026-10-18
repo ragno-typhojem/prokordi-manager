@@ -21,3 +21,10 @@ export function prependPresentation(slots,{minutes=30,transition=10}={}){
  const result=[{id:uid(),start:first,end,type:'presentation',title:'İLKYAR açılış sunumu',audience:'all'},...(+transition?[{id:uid(),start:end,end:addMin(end,+transition),type:'break'}]:[]),...shifted];
  const issues=validateTimeSlots(result);if(issues.length)throw new Error(issues.join(' '));return result;
 }
+
+export function rebuildDay(options,previous=[],classes=[]){
+ const next=makeDay(options),used=new Set();
+ const mapped=next.map(slot=>{const old=previous.find(s=>s.type===slot.type&&!used.has(s.id));if(old){used.add(old.id);return {...slot,id:old.id,...(slot.type==='presentation'?{title:old.title||slot.title}: {})};}return slot;});
+ for(const old of previous)if(!used.has(old.id)&&classes.some(c=>c.schedule?.[old.id]))throw new Error('Atama bulunan bir saat kaldırılacak. Etkinlik sayısını koruyun veya önce ilgili atamaları kaldırın.');
+ return mapped;
+}

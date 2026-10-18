@@ -21,8 +21,10 @@ import NameBadges from './components/NameBadges';
 import TeamCollage from './components/TeamCollage';
 import Welcome from './components/Welcome';
 import SessionBar from './components/SessionBar';
-import {sessionKeys,loadSessions,saveSessions,syncSessionRoster,crossSessionConflicts,sessionReservations} from './lib/sessions';
-import { mergeCatalog } from './lib/catalog';
+import ClassPicker from './components/ClassPicker';
+import ActivityManager from './components/ActivityManager';
+import VolunteerEntry from './components/VolunteerEntry';
+import {sessionKeys,loadSessions,saveSessions,syncSessionRoster,crossSessionConflicts,sessionReservations,migrateSharedLibrary} from './lib/sessions';
 import { calculateConflicts, distribute, workload, planSummary } from './lib/engine';
 import { askBalkiz, applyActions } from './lib/ai';
 import { readFile, parseAny, toStatePatch } from './lib/importer';
@@ -33,7 +35,8 @@ const buildCSS = (dark) => `
 @import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800;900&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; }
-body { font-family: 'DM Sans', sans-serif; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Geist', sans-serif; }
+button,input,select,textarea{font:inherit} button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #a5b4fc;outline-offset:2px}
 .font-comic { font-family: 'Comic Neue', cursive; }
 .font-mono  { font-family: 'DM Mono', monospace; }
 .font-400 { font-weight: 400; }
@@ -312,7 +315,7 @@ body { font-family: 'DM Sans', sans-serif; }
   html,body { height:auto!important; overflow:visible!important; margin:0!important; padding:0!important; background:white!important; }
   #root > div { display:block!important; height:auto!important; overflow:visible!important; }
   .no-print   { display:none!important; }
-  aside,header{ display:none!important; }
+  .app-sidebar,main>header{ display:none!important; }
   main { height:auto!important; overflow:visible!important; display:block!important; position:static!important; padding:0!important; background:white!important; }
   #printable-section { padding:0!important; max-width:none!important; }
   * { -webkit-print-color-adjust:exact!important; print-color-adjust:exact!important; }
@@ -320,7 +323,7 @@ body { font-family: 'DM Sans', sans-serif; }
   .print-page:last-child { page-break-after:auto!important; break-after:auto!important; }
   @page { size:A4 portrait; margin:0; }
   .collage-print-strict { width:210mm!important; height:297mm!important; max-height:297mm!important; page-break-after:avoid!important; overflow:hidden!important; display:flex!important; flex-direction:column!important; box-sizing:border-box!important; }
-  .excel-table th, .excel-table td { border:1px solid #000!important; }
+  .program-table-wrap{overflow:visible!important;width:100%!important}.excel-table{table-layout:fixed!important;width:100%!important;min-width:0!important;font-size:8pt!important}.excel-table th,.excel-table td{white-space:normal!important;overflow-wrap:anywhere!important;padding:2mm!important;border:1px solid #000!important;min-width:0!important}.excel-table tr{break-inside:avoid}.excel-table thead{display:table-header-group}.excel-table th:first-child,.excel-table td:first-child{width:20mm!important;position:static!important}
 }
 `;
 
@@ -640,7 +643,7 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
   const [activeView, setActiveView] = useState('view');
   const [confirmModal, setConfirmModal] = useState({ isOpen: false });
 
-  const [activities, setActivities] = useState(() => mergeCatalog(db.load(DB_KEYS.ACTIVITIES, [])));
+  const [activities, setActivities] = useState(() => db.load(DB_KEYS.ACTIVITIES, []));
   const [volunteers, setVolunteers] = useState(() => db.load(DB_KEYS.VOLUNTEERS, []));
   const [timeSlots,  setTimeSlots]  = useState(() => db.load(DB_KEYS.TIMESLOTS, []));
   const [classes,    setClasses]    = useState(() => db.load(DB_KEYS.CLASSES, []));
@@ -650,7 +653,9 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
   const [autoGenStep,    setAutoGenStep]    = useState('');
   const [editingSlot,    setEditingSlot]    = useState(null);
   const [bulkModalOpen,  setBulkModalOpen]  = useState(false);
-  const [classDraft,setClassDraft]=useState('');
+  const [participants,setParticipants]=useState(()=>db.load(DB_KEYS.PARTICIPANTS,null));
+  const programVolunteers=volunteers.filter(v=>!participants||participants.includes(v.id));
+  useEffect(()=>{db.save(DB_KEYS.PARTICIPANTS,participants);},[participants]);
   const [bulkText,       setBulkText]       = useState('');
   const [importPreview,setImportPreview] = useState(null);
   const [undoState,setUndoState] = useState(null);
@@ -664,15 +669,17 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
   useEffect(() => { db.save(DB_KEYS.TIMESLOTS,  timeSlots);  }, [timeSlots]);
   useEffect(() => { db.save(DB_KEYS.CLASSES,    classes);    }, [classes]);
 
+  useEffect(()=>{const refresh=e=>{const setters={[DB_KEYS.ACTIVITIES]:[setActivities,[]],[DB_KEYS.VOLUNTEERS]:[setVolunteers,[]],[DB_KEYS.TIMESLOTS]:[setTimeSlots,[]],[DB_KEYS.CLASSES]:[setClasses,[]],[DB_KEYS.PARTICIPANTS]:[setParticipants,null]};const entry=setters[e.key];if(entry)entry[0](db.load(e.key,entry[1]));};window.addEventListener('storage',refresh);return()=>window.removeEventListener('storage',refresh);},[DB_KEYS]);
+
   // ── ÇAKIŞMALAR (useMemo: her render'da değil, yalnızca veri değişince) ────
   const warnings = useMemo(
-    () => calculateConflicts({ activities, volunteers, timeSlots, classes }),
-    [activities, volunteers, timeSlots, classes]
+    () => calculateConflicts({ activities, volunteers:programVolunteers, timeSlots, classes,reservations:sessionReservations(sessionId,sessions) }),
+    [activities, volunteers, timeSlots, classes,participants,sessionId,sessions,dataVersion]
   );
 
   const appState = useMemo(
-    () => ({ activities, volunteers, timeSlots, classes,reservations:sessionReservations(sessionId,sessions) }),
-    [activities, volunteers, timeSlots, classes,sessionId,sessions,dataVersion]
+    () => ({ activities, volunteers:programVolunteers, timeSlots, classes,reservations:sessionReservations(sessionId,sessions) }),
+    [activities, volunteers, timeSlots, classes,participants,sessionId,sessions,dataVersion]
   );
 
   const latestPlan=useRef(appState);latestPlan.current=appState;
@@ -686,10 +693,10 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
     db.save('prokordi_before_change',{activities,volunteers,timeSlots,classes},0);
     if(next.extras){const ex=next.extras;for(const [key,value] of [[DB_KEYS.NAMETAG_VOLUNTEERS,ex.nametags],[DB_KEYS.COLLAGE_VOLUNTEERS,ex.collage],['prokordi_packing_5days_v2',ex.checklist],['prokordi_fold_badge_v1',ex.nameLayout],['prokordi_collage_title_v2',ex.collageTitle],['prokordi_collage_address_v2',ex.collageAddress]])if(value)db.save(key,value);}
     if (next.activities) setActivities(next.activities);
-    if (next.volunteers) { setVolunteers(next.volunteers); syncVolunteers(next.volunteers); }
+    if (next.volunteers) { const incoming=new Set(next.volunteers.map(v=>v.id));const keep=participants?volunteers.filter(v=>!participants.includes(v.id)&&!incoming.has(v.id)):[];const combined=[...keep,...next.volunteers];setVolunteers(combined);syncVolunteers(combined);if(participants)setParticipants(prev=>[...new Set([...prev.filter(id=>combined.some(v=>v.id===id)),...next.volunteers.filter(v=>!volunteers.some(old=>old.id===v.id)).map(v=>v.id)])]); }
     if (next.timeSlots)  setTimeSlots(next.timeSlots);
     if (next.classes)    { setClasses(next.classes); setHasDistributed(true); }
-  }, [activities,volunteers,timeSlots,classes]);
+  }, [activities,volunteers,timeSlots,classes,participants]);
 
   /** Dosya (xlsx/csv/txt) ya da yapıştırılan metin — türünü importer kendi bulur. */
   const handleImport = useCallback(async (input) => {
@@ -705,19 +712,20 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
     const errors = validateTimeSlots(timeSlots); if(errors.length){onNotify(errors.join(' '));return;}
     const lessonSlots = timeSlots.filter(t => t.type === 'lesson');
     if (!lessonSlots.length || !classes.length || !activities.length) {
-      onNotify('Önce etkinlik, sınıf ve zaman dilimi ekleyin!'); return;
+      setActiveView('setup');onNotify('Sınıfları tıklayarak seçin ve günü oluşturup kaydedin.'); return;
     }
-    if (!volunteers.length) { onNotify('⚠️ Gönüllü yok — Gönüllüler sekmesinden ekleyin.'); return; }
+    if (!programVolunteers.length) { setActiveView('volunteers');onNotify('Bu okulda görevli gönüllü seçin veya yeni gönüllü ekleyin.'); return; }
+    if(!activities.some(a=>a.cat!=='presentation'&&a.planningReady!==false&&a.boxCount>0&&classes.some(c=>!a.allowedGrades?.length||a.allowedGrades.includes(Number(c.name.match(/\d+/)?.[0]))))){setActiveView('activities');onNotify('Uygun düzeyleri seçip en az bir etkinliği programa dahil edin.');return;}
     setAiState('processing');
     // ağır işi bir sonraki frame'e bırak ki buton anında tepki versin
     requestAnimationFrame(() => {
       if(latestPlan.current!==appState){setAiState('idle');onNotify('Program veya başka bir ekip değişti; son düzenlemeleri korudum. Dağıtımı yeniden başlatın.');return;}
-      const next = distribute({ activities, volunteers, timeSlots, classes }, { onlyEmpty: !!onlyEmpty,reservations:sessionReservations(sessionId,sessions) });
+      const next = distribute({ activities, volunteers:programVolunteers, timeSlots, classes }, { onlyEmpty: !!onlyEmpty,reservations:sessionReservations(sessionId,sessions) });
       const filled = next.reduce((n, c) => n + lessonSlots.filter(sl => c.schedule[sl.id]).length, 0);
-      setUndoState(appState); setClasses(next); setHasDistributed(true); setAiState('idle');
-      onNotify(planSummary({activities,volunteers,timeSlots,classes:next}));
+      setUndoState({activities,volunteers,timeSlots,classes}); setClasses(next); setHasDistributed(true); setAiState('idle');
+      onNotify(planSummary({...appState,classes:next}));
     });
-  }, [activities, volunteers, timeSlots, classes, onNotify,sessionId,sessions]);
+  }, [activities, volunteers, timeSlots, classes, participants,onNotify,sessionId,sessions]);
 
   // ── EXCEL EXPORT ─────────────────────────────────────────────────────────
   const exportToExcelCSV = () => {
@@ -782,7 +790,7 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
     const sC = copy.find(c=>c.id===src.clsId);
     const tC = copy.find(c=>c.id===targetClsId);
     if(!sC||!tC||!sC.schedule[src.slotId])return;
-    setUndoState(appState);
+    setUndoState({activities,volunteers,timeSlots,classes});
     if (tC.schedule[targetSlotId]?.isLocked || sC.schedule[src.slotId]?.isLocked) { onNotify("Kilitli alanlar taşınamaz!"); return; }
     const sD = sC.schedule[src.slotId];
     const tD = tC.schedule[targetSlotId];
@@ -799,10 +807,10 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
 
   const saveSlotEdit = () => {
     if (!editingSlot) return;
-    setUndoState(appState);
+    setUndoState({activities,volunteers,timeSlots,classes});
     let { activityId, name:actName, leadId } = editingSlot.data;
     if (actName && !activities.find(a=>a.id===activityId) && activityId!=='delete' && activityId!=='NO_CLASS') {
-      const newAct = { id:uuid(), name:actName, cat:'science', isMust:false, boxCount:0, allowedGrades:[],planningReady:false };
+      const newAct = { id:uuid(), name:actName, cat:'science', isMust:false, boxCount:1, allowedGrades:[],planningReady:false };
       activityId = newAct.id;
       setActivities(prev=>[...prev,newAct]);
       onNotify(`"${actName}" yeni etkinlik olarak eklendi.`);
@@ -851,10 +859,7 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
       {importPreview && <div className="fixed inset-0 z-[9999] bg-black/50 p-4 flex items-center justify-center"><div className="dk-card dk-border border rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-auto"><h3 className="font-700 text-lg dk-text">İçe aktarma önizlemesi</h3><p className="text-sm dk-text my-3">{importPreview._kind}: {importPreview._summary}</p><p className="text-sm dk-text-muted mb-3">Program tablosu aynı sınıf ve saatteki hücreyi günceller. Diğer kayıtlar korunur. Uygulamadan önce mevcut durum yerel yedeğe alınır.</p><pre className="dk-card-inner dk-text p-3 rounded-xl overflow-auto text-xs max-h-64">{JSON.stringify({saatler:importPreview.timeSlots?.map(s=>`${s.start}–${s.end}`),siniflar:importPreview.classes?.map(c=>c.name),gonulluler:importPreview.volunteers?.map(v=>v.name),etkinlikler:importPreview.activities?.map(a=>a.name)},null,2)}</pre><div className="flex gap-3 mt-4"><button className="bg-indigo-600 text-white rounded-xl p-3" onClick={()=>{applyState(importPreview);setImportPreview(null);onNotify('İçe aktarıldı. Son değişikliği geri alabilirsiniz.');}}>İçe aktar</button><button className="dk-text" onClick={()=>setImportPreview(null)}>Vazgeç</button></div></div></div>}
       {/* Sub-nav */}
       <div className={`rounded-2xl border shadow-sm p-3 no-print flex flex-wrap gap-2 items-center dk-card dk-border`}>
-        <NavBtn dark={dark} active={activeView==='view'}       onClick={()=>setActiveView('view')}       icon={<Calendar size={15}/>}      label="Program"/>
-        <NavBtn dark={dark} active={activeView==='setup'}      onClick={()=>setActiveView('setup')}      icon={<BookOpen size={15}/>}      label="Sınıf & Zaman"/>
-        <NavBtn dark={dark} active={activeView==='activities'} onClick={()=>setActiveView('activities')} icon={<Package size={15}/>}       label="Etkinlikler"/>
-        <NavBtn dark={dark} active={activeView==='volunteers'} onClick={()=>setActiveView('volunteers')} icon={<GraduationCap size={15}/>}  label="Gönüllüler"/>
+        {[['volunteers','1 · Gönüllüler',Users],['activities','2 · Etkinlikler',Package],['setup','3 · Sınıf ve saat',BookOpen],['view','4 · Program',Calendar]].map(([id,label,Icon])=><NavBtn key={id} dark={dark} active={activeView===id} onClick={()=>setActiveView(id)} icon={<Icon size={15}/>} label={label}/>)}
         <button className="text-sm text-indigo-600 font-700 p-2" onClick={()=>{setBulkModalOpen(true);}}>Liste / tablo yapıştır</button>
         <div className="flex-1"/>
         {undoState && <button className="text-sm font-700 text-indigo-600 p-2" onClick={()=>{const restore=undoState;setActivities(restore.activities);setVolunteers(restore.volunteers);setTimeSlots(restore.timeSlots);setClasses(restore.classes);setUndoState(null);onNotify('Son değişiklik geri alındı.');}}>Son değişikliği geri al</button>}
@@ -880,10 +885,11 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
         )}
       </div>
 
+      {activeView!=='view'&&<div className="no-print flex flex-wrap justify-between items-center gap-3 rounded-xl dk-card dk-border border p-3"><p className="dk-text-muted text-sm">{programVolunteers.length} görevli · {classes.length} sınıf · {timeSlots.filter(t=>t.type==='lesson').length} etkinlik saati</p><button className="text-indigo-600 font-700 text-sm p-2" onClick={()=>setActiveView(activeView==='volunteers'?'activities':activeView==='activities'?'setup':'view')}>Sonraki: {activeView==='volunteers'?'Etkinlikleri seç':activeView==='activities'?'Sınıf ve saatleri seç':'Programı oluştur'} →</button></div>}
       {/* ── VIEW: Program ── */}
       {activeView === 'view' && (
         <>
-          <div className="no-print grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">{[['volunteers','1 · Ekibi ve yetkinlikleri gir'],['setup','2 · Sınıflar, sunum ve saatler'],['view','3 · Programı dağıt ve kontrol et']].map(([view,label])=><button key={view} onClick={()=>setActiveView(view)} className="dk-card dk-border border rounded-xl p-3 text-sm font-700 dk-text text-left">{label}</button>)}</div>
+
           {otherTeamWarnings.length>0&&<div role="alert" className="no-print bg-amber-50 text-amber-900 rounded-xl p-4 my-3 text-sm"><strong>Ekipler arası çakışma</strong>{otherTeamWarnings.map(w=><p key={w}>{w}</p>)}</div>}
           {/* AI Chat */}
           <BalkizAIChat sessionId={sessionId} appState={appState} onApply={applyState} onImport={handleImport} warnings={warnings} dark={dark}/>
@@ -909,7 +915,8 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
           </div>
 
           {/* Schedule Table */}
-          <div className={`rounded-2xl border shadow-sm overflow-x-auto print:shadow-none print:border-none print:rounded-none dk-card dk-border`}>
+          <h2 className="print-only" style={{fontSize:18,fontWeight:800,marginBottom:12}}>{sessions.find(s=>s.id===sessionId)?.name}</h2>
+          <div className={`program-table-wrap rounded-2xl border shadow-sm overflow-x-auto print:shadow-none print:border-none print:rounded-none dk-card dk-border`}>
             {classes.length === 0 || timeSlots.length === 0 ? (
               <div className="p-12 text-center">
                 <Calendar size={40} className="mx-auto mb-4 text-slate-300"/>
@@ -1010,20 +1017,12 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
             <Users size={20} className="text-indigo-600"/> Gönüllü Yönetimi
             <span className="ml-1 text-sm font-500 dk-text-muted">{volunteers.length} kişi</span>
           </h3>
-          <div className="flex flex-wrap gap-2 mb-6">
-            <input type="text" id="newVol" placeholder="Ad Soyad" onKeyDown={e=>{
-              if(e.key==='Enter'&&e.target.value.trim()){const u=[...volunteers,{id:uuid(),name:e.target.value.trim(),capabilities:[]}];setVolunteers(u);syncVolunteers(u);e.target.value='';onNotify("Eklendi.");}
-            }} className={inputCls}/>
-            <button onClick={()=>{const el=document.getElementById('newVol');const v=el.value.trim();if(v){const u=[...volunteers,{id:uuid(),name:v,capabilities:[]}];setVolunteers(u);syncVolunteers(u);el.value='';onNotify("Eklendi.");}}} className={btnPrim}>
-              <Plus size={16}/> Ekle
-            </button>
-            <button onClick={()=>setBulkModalOpen(true)} className="bg-emerald-600 text-white px-5 py-2.5 rounded-xl text-sm font-700 hover:bg-emerald-700 flex items-center gap-2 transition-colors shadow-sm">
-              <Users size={16}/> Toplu Ekle
-            </button>
-          </div>
+          <VolunteerEntry activities={activities} volunteers={volunteers} onSave={next=>{setVolunteers(next);syncVolunteers(next);if(participants)setParticipants(p=>[...new Set([...p,...next.filter(v=>!volunteers.some(old=>old.id===v.id)).map(v=>v.id)])]);onNotify('Ortak gönüllü listesi güncellendi.');}}/>
+          <p className="dk-text-muted text-sm mb-4">Gönüllü listesi ortaktır. Bölündüğünüz günlerde bu okulda görevli kişileri işaretleyin.</p><div className="flex gap-3 mb-4 text-sm text-indigo-600"><button onClick={()=>setParticipants(null)}>Herkes bu okulda</button><button onClick={()=>setParticipants([])}>Seçimi temizle</button><span>{programVolunteers.length} görevli / {volunteers.length} gönüllü</span></div>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {volunteers.map(vol=>(
               <div key={vol.id} className="dk-card-inner border dk-border rounded-2xl p-4 flex flex-col gap-3 hover:border-indigo-300 transition-colors">
+                <label className="text-sm dk-text flex gap-2"><input type="checkbox" checked={!participants||participants.includes(vol.id)} onChange={e=>setParticipants(prev=>{const ids=prev||volunteers.map(v=>v.id);return e.target.checked?[...new Set([...ids,vol.id])]:ids.filter(id=>id!==vol.id);})}/>Bu okulda görevli</label>
                 <div className="flex items-center justify-between gap-2">
                   <input value={vol.name} onChange={e=>{const u=volunteers.map(v=>v.id===vol.id?{...v,name:e.target.value}:v);setVolunteers(u);syncVolunteers(u);}}
                     className="font-700 text-sm dk-text bg-transparent border-b-2 border-transparent focus:border-indigo-300 outline-none flex-1 transition-colors"/>
@@ -1037,7 +1036,7 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
                   Yetkinlikler ({vol.capabilities.length}/{activities.length})
                 </div>
                 <div className="max-h-44 overflow-y-auto custom-scroll grid gap-1 pr-1">
-                  {activities.map(act=>(
+                  {activities.filter(a=>a.cat!=='presentation').map(act=>(
                     <label key={act.id} className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs cursor-pointer transition-all
                       ${vol.capabilities.includes(act.id)?'bg-indigo-50 border-indigo-200 text-indigo-700 font-600 dark:bg-indigo-900/30 dark:border-indigo-700 dark:text-indigo-300':'bg-white border-slate-100 text-slate-500 hover:border-slate-200 font-400 dk-card-inner dk-border'}`}>
                       <input type="checkbox" className="hidden" checked={vol.capabilities.includes(act.id)} onChange={()=>{
@@ -1062,75 +1061,7 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
         </div>
       )}
 
-      {/* ── VIEW: Etkinlikler ── */}
-      {activeView === 'activities' && (
-        <div className={`${cardCls} p-6 animate-fadeIn`}>
-          <h3 className="text-lg font-700 dk-text flex items-center gap-2 mb-5">
-            <Package size={20} className="text-indigo-600"/> Etkinlik Kataloğu
-            <span className="ml-1 text-sm font-500 dk-text-muted">{activities.length} etkinlik</span>
-          </h3>
-          <p className="text-sm dk-text-muted mb-4">Zorunlu etkinlikleri yalnızca koordinatör seçer. Yeni Drive kayıtlarında kutu ve sınıf düzeyleri doğrulanmadan otomatik atama yapılmaz.</p>
-          <div className="flex flex-wrap gap-2 mb-6 dk-card-inner p-3 rounded-xl border dk-border">
-            <input type="text" id="newActName" placeholder="Etkinlik adı…" className={`${inputCls} min-w-40`}/>
-            <div className="flex items-center gap-2 dk-card px-3 py-2 rounded-xl border dk-border">
-              <span className="text-[10px] font-700 dk-text-muted uppercase">Kutu</span>
-              <input type="number" id="newActBox" defaultValue={1} min="1" max="99" className="w-10 font-700 text-sm text-indigo-600 outline-none text-center bg-transparent"/>
-            </div>
-            <label className="flex items-center gap-2 dk-card px-3 py-2 rounded-xl border dk-border cursor-pointer select-none">
-              <input type="checkbox" id="newActMust" className="accent-indigo-600"/>
-              <span className="text-xs font-700 dk-text">Zorunlu ⭐</span>
-            </label>
-            <button onClick={()=>{
-              const n=document.getElementById('newActName'),b=document.getElementById('newActBox'),m=document.getElementById('newActMust');
-              const v=n.value.trim();
-              if(v){setActivities(prev=>[...prev,{id:uuid(),name:v,cat:'science',isMust:m.checked,boxCount:Number(b.value)||1,allowedGrades:[1,2,3,4,5,6,7,8]}]);n.value='';b.value=1;m.checked=false;onNotify("Etkinlik eklendi.");}
-            }} className={btnPrim}>
-              <Plus size={16}/> Ekle
-            </button>
-          </div>
-          <div className="space-y-3">
-            {activities.map(act=>(
-              <div key={act.id} className="dk-card-inner border dk-border rounded-xl p-4 flex flex-col xl:flex-row gap-3 items-start xl:items-center hover:border-indigo-200 transition-colors">
-                <input value={act.name} onChange={e=>setActivities(prev=>prev.map(a=>a.id===act.id?{...a,name:e.target.value}:a))}
-                  className="font-700 text-sm dk-text bg-transparent border-b-2 border-transparent focus:border-indigo-300 outline-none w-full xl:w-48 transition-colors"/>
-                <div className="flex flex-col gap-2 min-w-0 flex-1">
-                  {act.sourceUrl && <p className="text-xs dk-text-muted"><a className="text-indigo-600 underline" href={act.sourceUrl} target="_blank" rel="noreferrer">Drive kaynağı</a> · {act.catalogStatus}</p>}
-                  {act.planningReady !== undefined && <label className="text-sm dk-text flex gap-2 items-center"><input type="checkbox" checked={!!act.planningReady} onChange={e=>{if(e.target.checked && (!(act.boxCount>0) || !act.allowedGrades?.length)){onNotify('Önce kutu sayısını ve uygun sınıf düzeylerini belirtin.');return;}setActivities(prev=>prev.map(a=>a.id===act.id?{...a,planningReady:e.target.checked}:a));}}/> Kılavuz, kutu ve düzeyler doğrulandı; otomatik planlamaya dahil et</label>}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <div className="flex items-center gap-1.5 dk-card px-3 py-1.5 rounded-lg border dk-border">
-                    <span className="text-[10px] font-700 dk-text-muted">Kutu</span>
-                    <input type="number" min="0" value={act.boxCount??0} onChange={e=>setActivities(prev=>prev.map(a=>a.id===act.id?{...a,boxCount:Number(e.target.value)}:a))} className="w-10 text-center text-sm font-700 text-slate-700 outline-none bg-transparent"/>
-                  </div>
-                  <label className="flex items-center gap-1.5 dk-card px-3 py-1.5 rounded-lg border dk-border cursor-pointer hover:bg-slate-50 transition-colors">
-                    <input type="checkbox" checked={act.isMust||false} onChange={e=>setActivities(prev=>prev.map(a=>a.id===act.id?{...a,isMust:e.target.checked}:a))} className="accent-indigo-600"/>
-                    <span className="text-[10px] font-700 dk-text">Zorunlu</span>
-                  </label>
-                  <div className="flex items-center gap-1 flex-wrap">
-                    {[1,2,3,4,5,6,7,8,9,10,11,12].map(g=>{
-                      const sel=(act.allowedGrades||[]).includes(g);
-                      return <button key={g} onClick={()=>setActivities(prev=>prev.map(a=>{if(a.id!==act.id)return a;const gr=a.allowedGrades||[];return{...a,allowedGrades:gr.includes(g)?gr.filter(x=>x!==g):[...gr,g]};}))}
-                        className={`w-8 h-8 rounded-lg text-[11px] font-700 transition-all active:scale-95 ${sel?'bg-indigo-600 text-white shadow-sm':'dk-card border dk-border dk-text-muted hover:border-indigo-300'}`}>
-                        {g}
-                      </button>;
-                    })}
-                  </div>
-                </div>
-                </div>
-                <button onClick={()=>setConfirmModal({isOpen:true,isDanger:true,title:'Etkinliği Sil',message:`"${act.name}" silinecek. Atandığı tüm slotlar da temizlenecek.`,
-                  onConfirm:()=>{
-                    setActivities(prev=>prev.filter(a=>a.id!==act.id));
-                    setClasses(prev=>prev.map(c=>({...c,schedule:Object.fromEntries(Object.entries(c.schedule||{}).filter(([,s])=>s.activityId!==act.id))})));
-                    setConfirmModal({isOpen:false});onNotify("Silindi.");
-                  },
-                  onCancel:()=>setConfirmModal({isOpen:false})})} className="ml-auto dk-text-muted hover:text-red-400 p-2 rounded-xl border dk-border hover:border-red-200 transition-colors dk-card">
-                  <Trash2 size={15}/>
-                </button>
-              </div>
-            ))}
-            {activities.length===0 && <div className="py-12 text-center text-sm dk-text-muted border-2 border-dashed dk-border rounded-2xl">Etkinlik kataloğu boş.</div>}
-          </div>
-        </div>
-      )}
+      {activeView==='activities'&&<ActivityManager activities={activities} onChange={setActivities} onNotify={onNotify} onRemove={act=>setConfirmModal({isOpen:true,isDanger:true,title:'Etkinliği kaldır',message:`${act.name} ve bu programdaki atamaları kaldırılacak. Diğer okul programlarındaki eski atamalar ayrıca kontrol edilmelidir.`,onConfirm:()=>{setUndoState({activities,volunteers,timeSlots,classes});setActivities(prev=>prev.filter(a=>a.id!==act.id));setClasses(prev=>prev.map(c=>({...c,schedule:Object.fromEntries(Object.entries(c.schedule||{}).filter(([,cell])=>cell.activityId!==act.id))})));setConfirmModal({isOpen:false});},onCancel:()=>setConfirmModal({isOpen:false})})}/>}
 
       {/* ── VIEW: Setup ── */}
       {activeView === 'setup' && (
@@ -1138,15 +1069,13 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
           {/* Sınıflar */}
           <div className={cardCls}>
             <h3 className="text-base font-700 dk-text flex items-center gap-2 mb-4"><BookOpen size={18} className="text-indigo-600"/> Şubeler</h3>
-            <p className="text-sm dk-text-muted mb-3">Sınıfları virgülle veya alt alta yazın. Örneğin: 1-A, 5-H, 8-B.</p>
-            <textarea aria-label="Sınıf listesi" value={classDraft} onChange={e=>setClassDraft(e.target.value)} placeholder="1-A, 5-H, 8-B" className="dk-input dk-border border rounded-xl p-3 w-full h-28"/>
-            <button className="bg-indigo-600 text-white rounded-xl px-4 py-2 mt-2" onClick={()=>{const names=classDraft.split(/[,;\n]+/).map(n=>n.trim().toLocaleUpperCase('tr')).filter(Boolean);setUndoState(appState);setClasses(prev=>[...prev,...[...new Set(names)].filter(n=>!prev.some(c=>norm(c.name)===norm(n))).map(name=>({id:uuid(),name,schedule:{}}))]);setClassDraft('');onNotify('Sınıflar eklendi. Mevcut atamalar korundu.');}}>Sınıfları ekle</button>
+            <ClassPicker classes={classes} onAdd={names=>{const clean=names.map(n=>n.trim().toLocaleUpperCase('tr')).filter(Boolean);setUndoState({activities,volunteers,timeSlots,classes});setClasses(prev=>[...prev,...[...new Set(clean)].filter(n=>!prev.some(c=>norm(c.name)===norm(n))).map(name=>({id:uuid(),name,schedule:{}}))]);}}/>
             {classes.length>0 && (
               <div className="mt-3 flex flex-wrap gap-2">
                 {classes.map(c=>(
                   <span key={c.id} className="flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-100 px-3 py-1.5 rounded-xl text-xs font-700">
                     {c.name}
-                    <button aria-label={`${c.name} sınıfını kaldır`} onClick={()=>setConfirmModal({isOpen:true,isDanger:true,title:'Sınıfı kaldır',message:`${c.name} ve atamaları bu oturumdan kaldırılacak. Son değişikliği geri alabilirsiniz.`,onConfirm:()=>{setUndoState(appState);setClasses(prev=>prev.filter(x=>x.id!==c.id));setConfirmModal({isOpen:false});},onCancel:()=>setConfirmModal({isOpen:false})})} className="hover:text-red-500 transition-colors ml-1"><X size={10}/></button>
+                    <button aria-label={`${c.name} sınıfını kaldır`} onClick={()=>setConfirmModal({isOpen:true,isDanger:true,title:'Sınıfı kaldır',message:`${c.name} ve atamaları bu programdan kaldırılacak. Son değişikliği geri alabilirsiniz.`,onConfirm:()=>{setUndoState({activities,volunteers,timeSlots,classes});setClasses(prev=>prev.filter(x=>x.id!==c.id));setConfirmModal({isOpen:false});},onCancel:()=>setConfirmModal({isOpen:false})})} className="hover:text-red-500 transition-colors ml-1"><X size={10}/></button>
                   </span>
                 ))}
               </div>
@@ -1180,7 +1109,7 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
                     const m=activities.find(a=>a.name.toLocaleLowerCase('tr')===e.target.value.toLocaleLowerCase('tr'));
                     setEditingSlot({...editingSlot,data:{...editingSlot.data,name:e.target.value,activityId:m?.id||''}});
                   }}/>
-                <datalist id="acts-list">{activities.map(a=><option key={a.id} value={a.name}/>)}</datalist>
+                <datalist id="acts-list">{activities.filter(a=>a.cat!=='presentation').map(a=><option key={a.id} value={a.name}/>)}</datalist>
                 {editingSlot.data.name&&!activities.find(a=>a.name===editingSlot.data.name)&&editingSlot.data.activityId!=='NO_CLASS' && (
                   <p className="text-xs text-indigo-600 mt-1 font-600 bg-indigo-50 px-2 py-1 rounded-lg inline-block">+ Yeni etkinlik olarak eklenecek</p>
                 )}
@@ -1202,7 +1131,7 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
             </div>
             <div className="flex gap-3 p-5 border-t dk-border">
               {editingSlot.data.activityId && (
-                <button onClick={()=>{setUndoState(appState);setClasses(prev=>prev.map(c=>c.id!==editingSlot.clsId?c:{...c,schedule:Object.fromEntries(Object.entries(c.schedule||{}).filter(([id])=>id!==editingSlot.slotId))}));setEditingSlot(null);onNotify('Atama kaldırıldı.');}}
+                <button onClick={()=>{setUndoState({activities,volunteers,timeSlots,classes});setClasses(prev=>prev.map(c=>c.id!==editingSlot.clsId?c:{...c,schedule:Object.fromEntries(Object.entries(c.schedule||{}).filter(([id])=>id!==editingSlot.slotId))}));setEditingSlot(null);onNotify('Atama kaldırıldı.');}}
                   className="flex-1 border-2 border-red-100 text-red-500 hover:bg-red-50 py-3 rounded-xl text-sm font-700 flex justify-center gap-2 transition-colors"><Trash2 size={16}/> Sil</button>
               )}
               <button onClick={saveSlotEdit} className="flex-[2] bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl text-sm font-700 flex justify-center gap-2 transition-all active:scale-95 shadow-sm"><CheckCircle2 size={16}/> Kaydet</button>
@@ -1249,7 +1178,7 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
 export default function ProkordiManagerApp() {
   const [activeTab,    setActiveTab]    = useState('home');
   const [dataVersion,setDataVersion]=useState(0);
-  const [sessions,setSessions]=useState(loadSessions);
+  const [sessions,setSessions]=useState(()=>{migrateSharedLibrary();return loadSessions();});
   const [sessionId,setSessionId]=useState(()=>db.load('prokordi_active_session_v1','legacy'));
   const changeSessions=useCallback(list=>{saveSessions(list);setSessions(list);},[]);
   const selectSession=id=>{db.flush();db.save('prokordi_active_session_v1',id,0);setSessionId(id);};
@@ -1273,13 +1202,13 @@ export default function ProkordiManagerApp() {
     scheduler: { label:'Program Yöneticisi', icon:<Calendar size={18}/> },
     badges:    { label:'İsimlik Matbaası',   icon:<Users size={18}/> },
     collage:   { label:'Görsel Kolaj',       icon:<ImageIcon size={18}/> },
-    minutes:   { label:'Unutulmaması Gerekenler',      icon:<FileText size={18}/> },
+    minutes:   { label:'Tikçi Listesi',      icon:<FileText size={18}/> },
   };
 
   const renderContent = () => {
     switch(activeTab) {
       case 'scheduler': return <InfinityScheduler key={sessionId} sessionId={sessionId} sessions={sessions} dataVersion={dataVersion} onNotify={showNotify} dark={dark}/>;
-      case 'badges':    return <NameBadges key={sessionId} sessionId={sessionId} onNotify={showNotify}/>;
+      case 'badges':    return <NameBadges sessionId="legacy" onNotify={showNotify}/>;
       case 'collage':   return <TeamCollage onNotify={showNotify}/>;
       case 'minutes':   return <Checklist/>;
       default:          return <InfinityScheduler key={sessionId} sessionId={sessionId} sessions={sessions} dataVersion={dataVersion} onNotify={showNotify} dark={dark}/>;
@@ -1316,7 +1245,7 @@ export default function ProkordiManagerApp() {
       <style>{buildCSS(dark)}{`
         .print-only {display:none}
         @media(max-width:700px){.app-shell{flex-direction:column!important}.app-sidebar{width:100%!important;flex-direction:row!important;align-items:center;overflow:auto;max-height:86px}.app-sidebar>div{display:none}.app-sidebar nav{display:flex;gap:4px;padding:6px!important;margin:0!important}.app-sidebar nav button{white-space:nowrap;width:auto!important;padding:10px!important}main header{padding:0 12px!important}#printable-section{padding:12px!important}.print-page{margin-left:0!important}}
-        @media print{html,body,#root,.app-shell,main,#printable-section{height:auto!important;min-height:0!important;overflow:visible!important;background:white!important;padding:0!important;margin:0!important;max-width:none!important;display:block!important}.screen-only{display:none!important}.print-only{display:block!important}.print-page{break-after:page;page-break-after:always}.print-page:last-child{break-after:auto;page-break-after:auto}[class*=space-y-] > *{margin-top:0!important;margin-bottom:0!important}.animate-fadeIn,.animate-scaleIn,.animate-slideUp{animation:none!important;transform:none!important}.collage-print-strict{break-after:page!important}.collage-print-strict:last-child{break-after:auto!important}}
+        @media print{html,body,#root,.app-shell,main,#printable-section{height:auto!important;min-height:0!important;overflow:visible!important;background:white!important;padding:0!important;margin:0!important;max-width:none!important;display:block!important}.app-sidebar{display:none!important}.print-document{margin:0!important;padding:0!important;display:block!important;transform:none!important}.print-document>div{margin:0!important}.screen-only{display:none!important}.print-only{display:block!important}.print-page{break-after:page;page-break-after:always}.print-page:last-child{break-after:auto;page-break-after:auto}[class*=space-y-] > *{margin-top:0!important;margin-bottom:0!important}.animate-fadeIn,.animate-scaleIn,.animate-slideUp{animation:none!important;transform:none!important}.collage-print-strict{break-after:page!important}.collage-print-strict:last-child{break-after:auto!important}}
       `}</style>
 
       {resetDialog}
@@ -1331,7 +1260,7 @@ export default function ProkordiManagerApp() {
             <div>
               <div style={{ fontSize:13, fontWeight:800, color:textPrimary, letterSpacing:'-.02em', lineHeight:1.2 }}>ProKordi</div>
               <div style={{ fontSize:13, fontWeight:800, color:textPrimary, letterSpacing:'-.02em', lineHeight:1.2 }}>Manager</div>
-              <div style={{ fontSize:9, fontWeight:700, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.1em', marginTop:1 }}>B.A.L.K.I.Z. v7.0</div>
+              <div style={{ fontSize:9, fontWeight:700, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.1em', marginTop:1 }}>B.A.L.K.I.Z. v8.0</div>
             </div>
           </div>
         </div>
@@ -1342,7 +1271,7 @@ export default function ProkordiManagerApp() {
           <SidebarItem dark={dark} id="scheduler" icon={<Calendar size={16}/>}    label="Program"         active={activeTab} onClick={setActiveTab}/>
           <SidebarItem dark={dark} id="badges"    icon={<Users size={16}/>}       label="İsimlik"         active={activeTab} onClick={setActiveTab}/>
           <SidebarItem dark={dark} id="collage"   icon={<ImageIcon size={16}/>}   label="Görsel Kolaj"    active={activeTab} onClick={setActiveTab}/>
-          <SidebarItem dark={dark} id="minutes"   icon={<FileText size={16}/>}    label="Kontrol Listesi"   active={activeTab} onClick={setActiveTab}/>
+          <SidebarItem dark={dark} id="minutes"   icon={<FileText size={16}/>}    label="Tikçi Listesi"   active={activeTab} onClick={setActiveTab}/>
         </nav>
 
         {/* Footer tools */}
@@ -1381,7 +1310,7 @@ export default function ProkordiManagerApp() {
 
         {/* Content */}
         <div style={{ padding:24, minHeight:'calc(100vh - 60px)', maxWidth:1700, margin:'0 auto' }} id="printable-section" className="print:p-0">
-          {(activeTab==='scheduler'||activeTab==='badges')&&<SessionBar sessions={sessions} currentId={sessionId} onSelect={selectSession} onChange={changeSessions}/>}
+          {(activeTab==='scheduler')&&<SessionBar sessions={sessions} currentId={sessionId} onSelect={selectSession} onChange={changeSessions}/>}
           {renderContent()}
         </div>
 

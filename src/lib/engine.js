@@ -5,6 +5,8 @@ export const allowed = (act, grade) => !!act && act.planningReady !== false &&
 const reserved=(vol,slot,reservations=[])=>reservations.some(r=>norm(r.name)===norm(vol.name)&&toMin(r.start)<toMin(slot.end)&&toMin(slot.start)<toMin(r.end));
 export const score = (act) => act.isMust ? 1000 : 50;
 const people = cell => [...new Set([cell?.leadId, ...(cell?.support || []).map(v=>typeof v==='string'?v:v.id)].filter(id=>id && id!=='none'))];
+const overlaps=(a,b)=>toMin(a.start)<toMin(b.end)&&toMin(b.start)<toMin(a.end);
+const reservedBoxes=(act,slot,reservations=[])=>reservations.filter(r=>r.resource==='box'&&(r.activityId===act.id||norm(r.activityName)===norm(act.name))&&overlaps(r,slot)).length;
 const capacity = act => Number.isFinite(Number(act.boxCount)) ? Math.max(0,Number(act.boxCount)) : 0;
 
 export function workload({ volunteers=[], classes=[], timeSlots=[] }) {
@@ -62,7 +64,7 @@ export function calculateConflicts(state) {
       }
       const n=(stock.get(cell.activityId)||0)+1;stock.set(cell.activityId,n);
       const a=A.get(cell.activityId);
-      if(a && n>capacity(a))out.push({type:'stock',classId:c.id,slotId:slot.id,msg:`${a.name} ${slot.start}: ${n} sınıf için ${capacity(a)} kutu var.`});
+      if(a && n+reservedBoxes(a,slot,state.reservations)>capacity(a))out.push({type:'stock',classId:c.id,slotId:slot.id,msg:`${a.name} ${slot.start}: ${n} sınıf ve diğer okullarda ${reservedBoxes(a,slot,state.reservations)} kullanım için ${capacity(a)} kutu var.`});
     }
     for(const v of volunteers) if(!busy.has(norm(v.name)||v.id))out.push({type:'idle_slot',slotId:slot.id,msg:`${v.name} ${slot.start}: görev yok; yetkinliği uygun bir gruba yardımcı atanabilir.`});
   }
@@ -114,7 +116,7 @@ export function distribute(state,opts={}) {
       const candidates=c=>{
         const pairs=[];
         for(const a of activities){
-          if(!allowed(a,detectGrade(c.name))||(stock.get(a.id)||0)>=capacity(a))continue;
+          if(!allowed(a,detectGrade(c.name))||(stock.get(a.id)||0)+reservedBoxes(a,slot,reservations)>=capacity(a))continue;
           for(const v of volunteers){
             if(busy.has(v.id)||reserved(v,slot,reservations)||!(v.capabilities||[]).includes(a.id))continue;
             const repeated=used.get(c.id).has(a.id);
