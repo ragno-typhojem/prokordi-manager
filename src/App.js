@@ -516,13 +516,13 @@ function BalkizAIChat({ appState, onApply, onImport, warnings = [], dark, sessio
         <div style={{ position:'relative', overflow:'hidden', padding:'12px 18px', borderBottom:`1px solid ${dark?'rgba(255,255,255,.08)':'rgba(255,255,255,.4)'}`, background:'linear-gradient(135deg,rgba(99,102,241,.06) 0%,rgba(139,92,246,.04) 50%,rgba(6,182,212,.06) 100%)' }}>
           <div className="liquid-shimmer" style={{ position:'absolute', inset:0, pointerEvents:'none' }}/>
           <div style={{ position:'relative', zIndex:1, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+            <button type="button" onClick={()=>setIsOpen(v=>!v)} aria-expanded={isOpen} style={{ display:'flex', alignItems:'center', gap:12,background:'transparent',border:'none',cursor:'pointer',textAlign:'left' }}>
               <JarvisBrain active={loading}/>
               <div>
                 <div style={{ fontSize:14, fontWeight:700, color: dark?'#e2e8f0':'#334155', letterSpacing:'-.01em' }}>B.A.L.K.I.Z.</div>
                 <div style={{ fontSize:10, fontWeight:500, textTransform:'uppercase', letterSpacing:'.08em', marginTop:1 }}>{statusLabel}</div>
               </div>
-            </div>
+            </button>
             <div style={{ display:'flex', alignItems:'center', gap:6 }}>
               {warnings.length > 0 && !isOpen && (
                 <span style={{ background:'#fef3c7', color:'#b45309', fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:99 }}>{warnings.length}</span>
@@ -533,7 +533,7 @@ function BalkizAIChat({ appState, onApply, onImport, warnings = [], dark, sessio
               </button>
               <button onClick={()=>setIsOpen(v=>!v)} title={isOpen?'Küçült':'Aç'}
                 style={{ padding:6, borderRadius:8, border:'none', background:'transparent', color:'#94a3b8', cursor:'pointer', display:'flex' }}>
-                {isOpen?<ChevronUp size={14}/>:<ChevronDown size={14}/>}
+                <span style={{fontSize:12,fontWeight:700,marginRight:5}}>{isOpen?'Kapat':'Balkız’a sor'}</span>{isOpen?<ChevronUp size={14}/>:<ChevronDown size={14}/>}
               </button>
             </div>
           </div>
