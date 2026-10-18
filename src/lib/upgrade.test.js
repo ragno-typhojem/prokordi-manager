@@ -61,3 +61,11 @@ test('a box used by another school is reserved once per classroom, not once per 
  const sessions=[{id:'a',date:'2026-10-18'},{id:'b',date:'2026-10-18'}];const reservations=sessionReservations('b',sessions,()=>old);expect(reservations.filter(r=>r.resource==='box')).toHaveLength(1);
  const state={activities,timeSlots:slots,volunteers:[{id:'new',name:'Berke',capabilities:['o']}],classes:[{id:'c',name:'5-H',schedule:{}}],reservations};expect(distribute(state)[0].schedule.t).toBeUndefined();expect(calculateConflicts({...state,classes:[{id:'c',name:'5-H',schedule:{t:{activityId:'o',leadId:'new'}}}]}).some(w=>w.type==='stock')).toBe(true);
 });
+test('renamed records with reused IDs in old school libraries remain distinct and keep correct assignments',()=>{
+ db.save('prokordi_sessions_v1',[{id:'legacy',name:'A'},{id:'b',name:'B'}]);
+ db.save(DB_KEYS.ACTIVITIES,[{id:'a',name:'Özel origami'}]);db.save(DB_KEYS.VOLUNTEERS,[{id:'v',name:'Ayşe',capabilities:['a']}]);
+ db.save('prokordi_b_activities',[{id:'a',name:'Origami'}]);db.save('prokordi_b_volunteers',[{id:'v',name:'Deniz',capabilities:['a']}]);db.save('prokordi_b_classes',[{id:'c',name:'5-H',schedule:{t:{activityId:'a',name:'Origami',leadId:'v'}}}]);
+ migrateSharedLibrary();const activities=db.load(DB_KEYS.ACTIVITIES,[]),roster=db.load(DB_KEYS.VOLUNTEERS,[]),slot=db.load('prokordi_b_classes',[])[0].schedule.t;
+ expect(new Set(activities.map(a=>a.id)).size).toBe(activities.length);expect(new Set(roster.map(v=>v.id)).size).toBe(roster.length);
+ expect(activities.find(a=>a.id===slot.activityId).name).toBe('Origami');expect(roster.find(v=>v.id===slot.leadId).name).toBe('Deniz');expect(roster.find(v=>v.name==='Deniz').capabilities).toEqual([slot.activityId]);
+});
