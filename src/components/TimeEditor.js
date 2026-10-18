@@ -35,7 +35,7 @@ export default function TimeEditor({ slots, classes, onSave, onNotify }) {
     if (issues.length) return;
     onSave(canonicalSlots(draft)); onNotify('Saatler kaydedildi. Mevcut ders atamaları korundu.');
   };
-  return <section className="dk-card dk-border border rounded-2xl p-4 space-y-4">
+  return <section className="ui-controls control-section dk-card dk-border border rounded-2xl p-4 space-y-4">
     <div><h3 className="text-base font-700 dk-text">Zaman Çizelgesi</h3>
       <p className="text-sm dk-text-muted mt-2">Okulun saatlerini girin. 9:00 veya 09.00 yazabilirsiniz. Değişiklikler Kaydet ile programa geçer.</p></div>
     <details open className="dk-card-inner p-3 rounded-xl dk-text"><summary className="cursor-pointer font-700">Günü tek adımda oluştur</summary>

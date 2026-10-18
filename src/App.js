@@ -1,4 +1,5 @@
 /* eslint-disable */
+import './ui.css';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Calendar, Users, FileText, Image as ImageIcon, Printer,
@@ -329,9 +330,10 @@ button,input,select,textarea{font:inherit} button:focus-visible,input:focus-visi
 
 // ─── CONFIRM MODAL ────────────────────────────────────────────────────────────
 const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel, isDanger = false, confirmText = "Onayla", dark }) => {
+  useEffect(()=>{if(!isOpen)return;const close=e=>{if(e.key==='Escape'){e.preventDefault();onCancel?.();}};window.addEventListener('keydown',close);return()=>window.removeEventListener('keydown',close);},[isOpen,onCancel]);
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-fadeIn">
+    <div role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-fadeIn">
       <div className={`rounded-2xl shadow-2xl max-w-sm w-full p-6 border animate-scaleIn dk-card dk-border`}>
         <div className="flex items-center gap-3 mb-3">
           <div className={`p-2.5 rounded-xl ${isDanger ? 'bg-red-50 text-red-500' : 'bg-indigo-50 text-indigo-600'}`}>
@@ -341,7 +343,7 @@ const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel, isDanger = 
         </div>
         <p className="text-sm dk-text-muted mb-6 leading-relaxed">{message}</p>
         <div className="flex justify-end gap-2">
-          <button onClick={onCancel} className="px-4 py-2 rounded-xl text-sm font-600 bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">İptal</button>
+          <button autoFocus onClick={onCancel} className="px-4 py-2 rounded-xl text-sm font-600 bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">İptal</button>
           <button onClick={onConfirm} className={`px-4 py-2 rounded-xl text-sm font-700 text-white transition-all active:scale-95 ${isDanger ? 'bg-red-500 hover:bg-red-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}>{confirmText}</button>
         </div>
       </div>
@@ -387,7 +389,7 @@ const Saat = ({ dark }) => {
 
 // ─── SIDEBAR ITEM ─────────────────────────────────────────────────────────────
 const SidebarItem = ({ id, icon, label, active, onClick, dark }) => (
-  <button onClick={() => onClick(id)}
+  <button aria-current={active===id?'page':undefined} onClick={() => onClick(id)}
     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-600 transition-all duration-200
       ${active === id
         ? dark ? 'bg-indigo-900/50 text-indigo-300' : 'bg-white text-indigo-700 shadow-sm'
@@ -626,7 +628,7 @@ function BalkizAIChat({ appState, onApply, onImport, warnings = [], dark, sessio
 
 // ─── NAV BUTTON ───────────────────────────────────────────────────────────────
 const NavBtn = ({ active, onClick, icon, label, dark }) => (
-  <button onClick={onClick}
+  <button aria-current={active?'step':undefined} onClick={onClick}
     className={`px-3 py-2 rounded-xl text-sm font-600 flex gap-2 items-center transition-all duration-200 no-print
       ${active
         ? 'bg-indigo-600 text-white shadow-sm'
@@ -656,10 +658,15 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
   const [participants,setParticipants]=useState(()=>db.load(DB_KEYS.PARTICIPANTS,null));
   const programVolunteers=volunteers.filter(v=>!participants||participants.includes(v.id));
   useEffect(()=>{db.save(DB_KEYS.PARTICIPANTS,participants);},[participants]);
+  const [volunteerQuery,setVolunteerQuery]=useState('');
   const [bulkText,       setBulkText]       = useState('');
   const [importPreview,setImportPreview] = useState(null);
   const [undoState,setUndoState] = useState(null);
   const [quickSlot,      setQuickSlot]      = useState(null); // { clsId, slotId }
+
+  useEffect(()=>{const close=e=>{if(e.key!=='Escape')return;if(importPreview){setImportPreview(null);e.preventDefault();}else if(bulkModalOpen){setBulkModalOpen(false);e.preventDefault();}else if(editingSlot){setEditingSlot(null);e.preventDefault();}};window.addEventListener('keydown',close);return()=>window.removeEventListener('keydown',close);},[importPreview,bulkModalOpen,editingSlot]);
+
+  const openView=view=>{setActiveView(view);requestAnimationFrame(()=>document.querySelector('.workflow-panel')?.scrollIntoView({block:'start',behavior:'auto'}));};
 
   const dragItem    = useRef();
   const fileInputRef= useRef(null);
@@ -856,47 +863,25 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
       `}</style>
       <ConfirmModal {...confirmModal} dark={dark}/>
 
-      {importPreview && <div className="fixed inset-0 z-[9999] bg-black/50 p-4 flex items-center justify-center"><div className="dk-card dk-border border rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-auto"><h3 className="font-700 text-lg dk-text">İçe aktarma önizlemesi</h3><p className="text-sm dk-text my-3">{importPreview._kind}: {importPreview._summary}</p><p className="text-sm dk-text-muted mb-3">Program tablosu aynı sınıf ve saatteki hücreyi günceller. Diğer kayıtlar korunur. Uygulamadan önce mevcut durum yerel yedeğe alınır.</p><pre className="dk-card-inner dk-text p-3 rounded-xl overflow-auto text-xs max-h-64">{JSON.stringify({saatler:importPreview.timeSlots?.map(s=>`${s.start}–${s.end}`),siniflar:importPreview.classes?.map(c=>c.name),gonulluler:importPreview.volunteers?.map(v=>v.name),etkinlikler:importPreview.activities?.map(a=>a.name)},null,2)}</pre><div className="flex gap-3 mt-4"><button className="bg-indigo-600 text-white rounded-xl p-3" onClick={()=>{applyState(importPreview);setImportPreview(null);onNotify('İçe aktarıldı. Son değişikliği geri alabilirsiniz.');}}>İçe aktar</button><button className="dk-text" onClick={()=>setImportPreview(null)}>Vazgeç</button></div></div></div>}
-      {/* Sub-nav */}
-      <div className={`rounded-2xl border shadow-sm p-3 no-print flex flex-wrap gap-2 items-center dk-card dk-border`}>
-        {[['volunteers','1 · Gönüllüler',Users],['activities','2 · Etkinlikler',Package],['setup','3 · Sınıf ve saat',BookOpen],['view','4 · Program',Calendar]].map(([id,label,Icon])=><NavBtn key={id} dark={dark} active={activeView===id} onClick={()=>setActiveView(id)} icon={<Icon size={15}/>} label={label}/>)}
-        <button className="text-sm text-indigo-600 font-700 p-2" onClick={()=>{setBulkModalOpen(true);}}>Liste / tablo yapıştır</button>
-        <div className="flex-1"/>
-        {undoState && <button className="text-sm font-700 text-indigo-600 p-2" onClick={()=>{const restore=undoState;setActivities(restore.activities);setVolunteers(restore.volunteers);setTimeSlots(restore.timeSlots);setClasses(restore.classes);setUndoState(null);onNotify('Son değişiklik geri alındı.');}}>Son değişikliği geri al</button>}
-        {activeView === 'view' && (
-          <details className="dk-text text-sm"><summary className="cursor-pointer p-2">Dosya işlemleri</summary><div className="flex gap-2 flex-wrap py-2">
-            <button onClick={exportToExcelCSV} className="flex items-center gap-1.5 px-3 py-2 text-xs font-600 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors">
-              <Download size={13}/> Excel
-            </button>
-            <button onClick={exportBackupJSON} className="flex items-center gap-1.5 px-3 py-2 text-xs font-600 text-slate-600 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors">
-              <Download size={13}/> Yedek
-            </button>
-            <label className="flex items-center gap-1.5 px-3 py-2 text-xs font-600 text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors cursor-pointer">
-              <UploadCloud size={13}/> Yedek Yükle
-              <input type="file" accept=".json" className="hidden" ref={fileInputRef} onChange={handleImportBackup}/>
-            </label>
-            <label className="flex items-center gap-1.5 px-3 py-2 text-xs font-600 text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors cursor-pointer"
-              title="Excel/CSV: program tablosu, gönüllü listesi, etkinlik kataloğu ya da sınıf listesi — türü otomatik anlaşılır">
-              <FileSpreadsheet size={13}/> Excel / CSV İçe Aktar
-              <input type="file" accept=".xlsx,.xlsm,.csv,.txt,.tsv" className="hidden"
-                onChange={e=>{ const f=e.target.files?.[0]; e.target.value=''; if(f) handleImport(f).catch(err=>onNotify(`⚠️ ${err.message}`)); }}/>
-            </label>
-          </div></details>
-        )}
-      </div>
+      {importPreview && <div role="dialog" aria-modal="true" aria-label="İçe aktarma önizlemesi" className="fixed inset-0 z-[9999] bg-black/50 p-4 flex items-center justify-center"><div className="dk-card dk-border border rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-auto"><h3 className="font-700 text-lg dk-text">İçe aktarma önizlemesi</h3><p className="text-sm dk-text my-3">{importPreview._kind}: {importPreview._summary}</p><p className="text-sm dk-text-muted mb-3">Program tablosu aynı sınıf ve saatteki hücreyi günceller. Diğer kayıtlar korunur. Uygulamadan önce mevcut durum yerel yedeğe alınır.</p><pre className="dk-card-inner dk-text p-3 rounded-xl overflow-auto text-xs max-h-64">{JSON.stringify({saatler:importPreview.timeSlots?.map(s=>`${s.start}–${s.end}`),siniflar:importPreview.classes?.map(c=>c.name),gonulluler:importPreview.volunteers?.map(v=>v.name),etkinlikler:importPreview.activities?.map(a=>a.name)},null,2)}</pre><div className="flex gap-3 mt-4"><button className="bg-indigo-600 text-white rounded-xl p-3" onClick={()=>{applyState(importPreview);setImportPreview(null);onNotify('İçe aktarıldı. Son değişikliği geri alabilirsiniz.');}}>İçe aktar</button><button className="dk-text" onClick={()=>setImportPreview(null)}>Vazgeç</button></div></div></div>}
+      <section className="workflow-panel ui-controls rounded-2xl border no-print dk-card dk-border" aria-label="Program hazırlama adımları">
+        <div className="workflow-heading"><h3>Programı 4 adımda hazırla</h3><p>İstediğin adıma geri dönebilirsin.</p></div>
+        <nav className="workflow-steps" aria-label="Program adımları">{[['volunteers','1 · Gönüllüler',Users],['activities','2 · Etkinlikler',Package],['setup','3 · Sınıf ve saat',BookOpen],['view','4 · Program',Calendar]].map(([id,label,Icon])=><NavBtn key={id} dark={dark} active={activeView===id} onClick={()=>openView(id)} icon={<Icon size={17}/>} label={label}/>)}</nav>
+        <div className="workflow-files">
+          <div className="file-group"><span className="file-group-title">İçe aktar</span><button className="ui-tool" onClick={()=>setBulkModalOpen(true)}><UploadCloud size={15}/>Liste / tablo yapıştır</button><label role="button" tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.currentTarget.querySelector('input')?.click();}}} className="ui-tool" style={{cursor:'pointer'}}><FileSpreadsheet size={15}/>Excel / CSV İçe Aktar<input type="file" accept=".xlsx,.xlsm,.csv,.txt,.tsv" className="hidden" onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)handleImport(f).catch(err=>onNotify(err.message));}}/></label><label role="button" tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.currentTarget.querySelector('input')?.click();}}} className="ui-tool" style={{cursor:'pointer'}}><UploadCloud size={15}/>Yedek Yükle<input type="file" accept=".json" className="hidden" ref={fileInputRef} onChange={handleImportBackup}/></label></div>
+          <div className="file-group"><span className="file-group-title">Dışa aktar</span><button onClick={exportToExcelCSV} className="ui-tool"><Download size={15}/>Excel indir</button><button onClick={exportBackupJSON} className="ui-tool"><Download size={15}/>Yedek indir</button></div>
+          {undoState&&<div className="file-group"><span className="file-group-title">Son işlem</span><button className="ui-tool" onClick={()=>{const restore=undoState;setActivities(restore.activities);setVolunteers(restore.volunteers);setTimeSlots(restore.timeSlots);setClasses(restore.classes);setUndoState(null);onNotify('Son değişiklik geri alındı.');}}>Son değişikliği geri al</button></div>}
+        </div>
+      </section>
 
-      {activeView!=='view'&&<div className="no-print flex flex-wrap justify-between items-center gap-3 rounded-xl dk-card dk-border border p-3"><p className="dk-text-muted text-sm">{programVolunteers.length} görevli · {classes.length} sınıf · {timeSlots.filter(t=>t.type==='lesson').length} etkinlik saati</p><button className="text-indigo-600 font-700 text-sm p-2" onClick={()=>setActiveView(activeView==='volunteers'?'activities':activeView==='activities'?'setup':'view')}>Sonraki: {activeView==='volunteers'?'Etkinlikleri seç':activeView==='activities'?'Sınıf ve saatleri seç':'Programı oluştur'} →</button></div>}
+      {activeView!=='view'&&<div className="workflow-next ui-controls no-print flex flex-wrap justify-between items-center gap-3 rounded-xl dk-card dk-border border p-3"><p className="dk-text-muted text-sm">{programVolunteers.length} görevli · {classes.length} sınıf · {timeSlots.filter(t=>t.type==='lesson').length} etkinlik saati</p><button className="text-indigo-600 font-700 text-sm p-2" onClick={()=>openView(activeView==='volunteers'?'activities':activeView==='activities'?'setup':'view')}>Sonraki: {activeView==='volunteers'?'Etkinlikleri seç':activeView==='activities'?'Sınıf ve saatleri seç':'Programı oluştur'} →</button></div>}
       {/* ── VIEW: Program ── */}
       {activeView === 'view' && (
         <>
 
-          {otherTeamWarnings.length>0&&<div role="alert" className="no-print bg-amber-50 text-amber-900 rounded-xl p-4 my-3 text-sm"><strong>Ekipler arası çakışma</strong>{otherTeamWarnings.map(w=><p key={w}>{w}</p>)}</div>}
-          {/* AI Chat */}
-          <BalkizAIChat sessionId={sessionId} appState={appState} onApply={applyState} onImport={handleImport} warnings={warnings} dark={dark}/>
-
-          <section className="dk-card dk-border border rounded-2xl p-4 my-4 no-print"><h3 className="font-700 dk-text">Program geri bildirimi</h3><p className="text-sm dk-text my-2">{planSummary(appState)}</p><div className="flex flex-wrap gap-2">{workload(appState).map(v=><span key={v.id} className="dk-card-inner dk-text text-xs p-2 rounded-lg">{v.name}: {v.lead} sorumlu · {v.support} yardımcı · {v.minutes} dk · {v.variety} farklı etkinlik</span>)}</div><details className="mt-3 text-sm dk-text"><summary className="cursor-pointer">Tüm uyarılar ({warnings.length})</summary><div className="max-h-64 overflow-auto space-y-2 mt-2">{warnings.map((w,i)=><p key={i}>{w.msg}</p>)}</div></details></section>
           {/* Action bar */}
-          <div className={`no-print flex flex-wrap gap-2 items-center rounded-2xl border p-3 shadow-sm dk-card dk-border`}>
+          <div className={`plan-actions ui-controls no-print flex flex-wrap gap-2 items-center rounded-2xl border p-3 shadow-sm dk-card dk-border`}>
+<div className="plan-action-title"><h3>Programı oluştur</h3><p>Hazır etkinlikler ve görevli gönüllülerle dağıtım yap.</p></div>
             {/* B.A.L.K.I.Z. Dağıt */}
             <button onClick={()=>distributePerfectly(false)} disabled={aiState==='processing'||!!autoGenStep}
               title="Kilitli hücreler dışında her şeyi yeniden dağıtır"
@@ -914,6 +899,11 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
 
           </div>
 
+          {otherTeamWarnings.length>0&&<div role="alert" className="no-print bg-amber-50 text-amber-900 rounded-xl p-4 my-3 text-sm"><strong>Ekipler arası çakışma</strong>{otherTeamWarnings.map(w=><p key={w}>{w}</p>)}</div>}
+          {/* AI Chat */}
+          <BalkizAIChat sessionId={sessionId} appState={appState} onApply={applyState} onImport={handleImport} warnings={warnings} dark={dark}/>
+
+          <section className="dk-card dk-border border rounded-2xl p-4 my-4 no-print"><h3 className="font-700 dk-text">Program geri bildirimi</h3><p className="text-sm dk-text my-2">{planSummary(appState)}</p><details className="mt-3 text-sm dk-text"><summary className="cursor-pointer">Gönüllü dağılımını gör</summary><div className="flex flex-wrap gap-2 mt-2">{workload(appState).map(v=><span key={v.id} className="dk-card-inner dk-text text-xs p-2 rounded-lg">{v.name}: {v.lead} sorumlu · {v.support} yardımcı · {v.minutes} dk · {v.variety} farklı etkinlik</span>)}</div></details><details className="mt-3 text-sm dk-text"><summary className="cursor-pointer">Tüm uyarılar ({warnings.length})</summary><div className="max-h-64 overflow-auto space-y-2 mt-2">{warnings.map((w,i)=><p key={i}>{w.msg}</p>)}</div></details></section>
           {/* Schedule Table */}
           <h2 className="print-only" style={{fontSize:18,fontWeight:800,marginBottom:12}}>{sessions.find(s=>s.id===sessionId)?.name}</h2>
           <div className={`program-table-wrap rounded-2xl border shadow-sm overflow-x-auto print:shadow-none print:border-none print:rounded-none dk-card dk-border`}>
@@ -937,12 +927,12 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
                     {classes.map(c=>(
                       <th key={c.id} className="p-2 text-center relative group" style={{ borderBottom:'2px solid #475569', minWidth:120 }}>
                         <span className="text-sm font-700 dk-text">{c.name}</span>
-                        <button onClick={()=>setConfirmModal({isOpen:true,isDanger:true,title:`${c.name} Temizle`,
+                        <button aria-label={`${c.name} atamalarını temizle`} onClick={()=>setConfirmModal({isOpen:true,isDanger:true,title:`${c.name} Temizle`,
                           message:`${c.name} sınıfının tüm atamaları silinecek.`,
                           onConfirm:()=>{setClasses(prev=>prev.map(x=>x.id===c.id?{...x,schedule:{}}:x));setConfirmModal({isOpen:false});onNotify(`${c.name} temizlendi.`);},
                           onCancel:()=>setConfirmModal({isOpen:false})})}
-                          className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 bg-red-50 text-red-400 hover:text-red-600 p-1 rounded-md transition-all no-print">
-                          <Trash2 size={11}/>
+                          className="schedule-clear bg-red-50 text-red-600 rounded-lg no-print">
+                          <Trash2 size={12}/> Temizle
                         </button>
                       </th>
                     ))}
@@ -971,7 +961,7 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
                             <td key={cls.id} className="p-1 align-top" style={{ height:88 }}
                               onDragOver={e=>e.preventDefault()} onDrop={e=>handleDrop(e,cls.id,slot.id)}>
                               {cell ? (
-                                <div draggable={!isNoClass} onDragStart={e=>handleDragStart(e,cls.id,slot.id,cell)}
+                                <div role="button" tabIndex={0} aria-label={`${cls.name} ${slot.start} ${cell.name} atamasını düzenle`} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();handleSlotClick(cls.id,slot.id,cell);}}} draggable={!isNoClass} onDragStart={e=>handleDragStart(e,cls.id,slot.id,cell)}
                                   onClick={()=>handleSlotClick(cls.id,slot.id,cell)}
                                   className={`h-full p-2 rounded-xl cursor-pointer flex flex-col justify-between transition-all hover:brightness-95 active:scale-[.98] select-none
                                     ${isNoClass?'slot-cell-noclass items-center justify-center':cell.isMust?'slot-cell-must':'slot-cell-opt'}`}>
@@ -987,9 +977,9 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
                                   )}
                                 </div>
                               ) : (
-                                <div onClick={()=>handleSlotClick(cls.id,slot.id,null)}
-                                  className="h-full flex items-center justify-center slot-cell-empty cursor-pointer transition-all rounded-xl hover:border-indigo-300 hover:bg-indigo-50/50 no-print">
-                                  <Plus size={18} className="text-slate-300 hover:text-indigo-400" strokeWidth={2.5}/>
+                                <div role="button" tabIndex={0} aria-label={`${cls.name} ${slot.start} etkinlik ekle`} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();handleSlotClick(cls.id,slot.id,null);}}} onClick={()=>handleSlotClick(cls.id,slot.id,null)}
+                                  className="h-full flex flex-col gap-1 items-center justify-center slot-cell-empty cursor-pointer transition-all rounded-xl hover:border-indigo-300 hover:bg-indigo-50/50 no-print">
+                                  <Plus size={18} className="text-indigo-400" strokeWidth={2.5}/><span className="text-xs text-indigo-600 font-600">Etkinlik ekle</span>
                                 </div>
                               )}
                             </td>
@@ -1012,15 +1002,15 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
 
       {/* ── VIEW: Gönüllüler ── */}
       {activeView === 'volunteers' && (
-        <div className={`${cardCls} p-6 animate-fadeIn`}>
+        <div className={`${cardCls} ui-controls control-section p-6 animate-fadeIn`}>
           <h3 className="text-lg font-700 dk-text flex items-center gap-2 mb-5">
             <Users size={20} className="text-indigo-600"/> Gönüllü Yönetimi
             <span className="ml-1 text-sm font-500 dk-text-muted">{volunteers.length} kişi</span>
           </h3>
           <VolunteerEntry activities={activities} volunteers={volunteers} onSave={next=>{setVolunteers(next);syncVolunteers(next);if(participants)setParticipants(p=>[...new Set([...p,...next.filter(v=>!volunteers.some(old=>old.id===v.id)).map(v=>v.id)])]);onNotify('Ortak gönüllü listesi güncellendi.');}}/>
           <p className="dk-text-muted text-sm mb-4">Gönüllü listesi ortaktır. Bölündüğünüz günlerde bu okulda görevli kişileri işaretleyin.</p><div className="flex gap-3 mb-4 text-sm text-indigo-600"><button onClick={()=>setParticipants(null)}>Herkes bu okulda</button><button onClick={()=>setParticipants([])}>Seçimi temizle</button><span>{programVolunteers.length} görevli / {volunteers.length} gönüllü</span></div>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {volunteers.map(vol=>(
+          <input aria-label="Gönüllü ara" value={volunteerQuery} onChange={e=>setVolunteerQuery(e.target.value)} placeholder="Listede gönüllü ara…" className="volunteer-search dk-input border dk-border rounded-xl p-3"/><div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {volunteers.filter(v=>norm(v.name).includes(norm(volunteerQuery))).map(vol=>(
               <div key={vol.id} className="dk-card-inner border dk-border rounded-2xl p-4 flex flex-col gap-3 hover:border-indigo-300 transition-colors">
                 <label className="text-sm dk-text flex gap-2"><input type="checkbox" checked={!participants||participants.includes(vol.id)} onChange={e=>setParticipants(prev=>{const ids=prev||volunteers.map(v=>v.id);return e.target.checked?[...new Set([...ids,vol.id])]:ids.filter(id=>id!==vol.id);})}/>Bu okulda görevli</label>
                 <div className="flex items-center justify-between gap-2">
@@ -1090,7 +1080,7 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
 
       {/* MODAL: Slot Edit */}
       {editingSlot && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
+        <div role="dialog" aria-modal="true" aria-label="Atamayı düzenle" className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh] animate-scaleIn border border-slate-100 overflow-hidden dk-card dk-border">
             <div className="flex items-center justify-between p-5 border-b dk-border dk-card-inner">
               <div>
@@ -1099,7 +1089,7 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
                   {classes.find(c=>c.id===editingSlot.clsId)?.name} — {timeSlots.find(t=>t.id===editingSlot.slotId)?.start}–{timeSlots.find(t=>t.id===editingSlot.slotId)?.end}
                 </p>
               </div>
-              <button onClick={()=>setEditingSlot(null)} className="p-2 dk-text-muted hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"><X size={17}/></button>
+              <button aria-label="Atamayı kapat" onClick={()=>setEditingSlot(null)} className="p-2 dk-text-muted hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"><X size={17}/></button>
             </div>
             <div className="p-5 overflow-y-auto custom-scroll space-y-4">
               <div>
@@ -1142,11 +1132,11 @@ function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion })
 
       {/* MODAL: Toplu Gönüllü */}
       {bulkModalOpen && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
+        <div role="dialog" aria-modal="true" aria-label="Liste veya program yapıştır" className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg animate-scaleIn border border-slate-100 overflow-hidden dk-card dk-border">
             <div className="flex items-center justify-between p-5 border-b dk-border dk-card-inner">
               <h3 className="text-base font-700 dk-text">Liste veya Program Yapıştır</h3>
-              <button onClick={()=>setBulkModalOpen(false)} className="p-2 dk-text-muted hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"><X size={17}/></button>
+              <button aria-label="Yapıştırma penceresini kapat" onClick={()=>setBulkModalOpen(false)} className="p-2 dk-text-muted hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"><X size={17}/></button>
             </div>
             <div className="p-5">
               <p className="text-xs dk-text-muted font-500 mb-3">
@@ -1193,6 +1183,8 @@ export default function ProkordiManagerApp() {
   useEffect(()=>{const refresh=e=>{if(e.key==='prokordi_sessions_v1')setSessions(loadSessions());setDataVersion(v=>v+1);};window.addEventListener('storage',refresh);return()=>window.removeEventListener('storage',refresh);},[]);
   const showNotify = msg => { setNotification(msg); setTimeout(()=>setNotification(null), 3500); };
 
+  useEffect(()=>{if(!cacheModal)return;const close=e=>{if(e.key==='Escape'){setCacheModal(false);e.preventDefault();}};window.addEventListener('keydown',close);return()=>window.removeEventListener('keydown',close);},[cacheModal]);
+
   const clearAllCache = () => {
     db.clearAll();
     window.location.reload();
@@ -1231,20 +1223,20 @@ export default function ProkordiManagerApp() {
             </div>
             <p className="text-sm dk-text-muted mb-6 leading-relaxed">Bu tarayıcıdaki tüm ekipler, programlar, gönüllüler, etkinlikler, isimlikler, kolaj fotoğrafları, depo listesi, sohbetler ve ayarlar <strong className="text-red-500">kalıcı olarak</strong> silinecek. Geri alınamaz. Drive ve GitHub dosyalarına dokunulmaz.</p>
             <div className="flex justify-end gap-2">
-              <button onClick={()=>setCacheModal(false)} className="px-4 py-2 rounded-xl text-sm font-600 bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">İptal</button>
+              <button autoFocus onClick={()=>setCacheModal(false)} className="px-4 py-2 rounded-xl text-sm font-600 bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">İptal</button>
               <button onClick={clearAllCache} className="px-4 py-2 rounded-xl text-sm font-700 text-white bg-red-500 hover:bg-red-600 transition-all active:scale-95">Tümünü Sil ve Sıfırla</button>
             </div>
           </div>
         </div>
       );
 
-  if(activeTab==='home')return <><style>{buildCSS(false)}</style>{resetDialog}<Welcome onOpen={setActiveTab}><button onClick={()=>setCacheModal(true)} style={{float:'right',color:'#b91c1c',fontSize:12,padding:8}}>Tamamen sıfırla</button><SessionBar sessions={sessions} currentId={sessionId} onSelect={selectSession} onChange={changeSessions}/></Welcome></>;
+  if(activeTab==='home')return <><style>{buildCSS(false)}</style>{resetDialog}<Welcome onOpen={setActiveTab}><SessionBar sessions={sessions} currentId={sessionId} onSelect={selectSession} onChange={changeSessions}/><div className="welcome-reset"><button onClick={()=>setCacheModal(true)}>Tamamen sıfırla</button></div></Welcome></>;
 
   return (
-    <div className="app-shell" style={{ display:'flex', height:'100vh', background:appBg, color:textPrimary, overflow:'hidden' }}>
+    <div className="app-shell" data-theme={dark?'dark':'light'} data-section={activeTab} style={{ display:'flex', height:'100vh', background:appBg, color:textPrimary, overflow:'hidden' }}>
       <style>{buildCSS(dark)}{`
         .print-only {display:none}
-        @media(max-width:700px){.app-shell{flex-direction:column!important}.app-sidebar{width:100%!important;flex-direction:row!important;align-items:center;overflow:auto;max-height:86px}.app-sidebar>div{display:none}.app-sidebar nav{display:flex;gap:4px;padding:6px!important;margin:0!important}.app-sidebar nav button{white-space:nowrap;width:auto!important;padding:10px!important}main header{padding:0 12px!important}#printable-section{padding:12px!important}.print-page{margin-left:0!important}}
+
         @media print{html,body,#root,.app-shell,main,#printable-section{height:auto!important;min-height:0!important;overflow:visible!important;background:white!important;padding:0!important;margin:0!important;max-width:none!important;display:block!important}.app-sidebar{display:none!important}.print-document{margin:0!important;padding:0!important;display:block!important;transform:none!important}.print-document>div{margin:0!important}.screen-only{display:none!important}.print-only{display:block!important}.print-page{break-after:page;page-break-after:always}.print-page:last-child{break-after:auto;page-break-after:auto}[class*=space-y-] > *{margin-top:0!important;margin-bottom:0!important}.animate-fadeIn,.animate-scaleIn,.animate-slideUp{animation:none!important;transform:none!important}.collage-print-strict{break-after:page!important}.collage-print-strict:last-child{break-after:auto!important}}
       `}</style>
 
@@ -1266,7 +1258,7 @@ export default function ProkordiManagerApp() {
         </div>
 
         {/* Nav */}
-        <nav style={{ flex:1, padding:'10px 12px', marginTop:8 }} className="space-y-1">
+        <nav aria-label="Ana bölümler" style={{ flex:1, padding:'10px 12px', marginTop:8 }} className="space-y-1">
           <SidebarItem dark={dark} id="home" icon={<Sparkles size={16}/>} label="Başlangıç" active={activeTab} onClick={setActiveTab}/>
           <SidebarItem dark={dark} id="scheduler" icon={<Calendar size={16}/>}    label="Program"         active={activeTab} onClick={setActiveTab}/>
           <SidebarItem dark={dark} id="badges"    icon={<Users size={16}/>}       label="İsimlik"         active={activeTab} onClick={setActiveTab}/>
@@ -1276,12 +1268,6 @@ export default function ProkordiManagerApp() {
 
         {/* Footer tools */}
         <div style={{ padding:'12px', borderTop:`1px solid ${borderClr}` }} className="space-y-2">
-          {/* Dark mode toggle */}
-          <button onClick={()=>setDark(d=>!d)}
-            style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'8px 12px', borderRadius:12, border:'none', cursor:'pointer', background:dark?'rgba(99,102,241,.15)':'rgba(99,102,241,.06)', color:dark?'#a5b4fc':'#6366f1', transition:'all .2s' }}>
-            {dark ? <Sun size={15}/> : <Moon size={15}/>}
-            <span style={{ fontSize:12, fontWeight:600 }}>{dark?'Aydınlık Mod':'Karanlık Mod'}</span>
-          </button>
           <div style={{ textAlign:'center', fontSize:9, color:textMuted, paddingTop:4 }}>
             © 2026 <a href="https://github.com/ragno-typhojem" target="_blank" rel="noopener noreferrer" style={{ color:'#6366f1', fontWeight:600 }}>Mustafa Berke Simsekler</a>
           </div>
@@ -1291,26 +1277,24 @@ export default function ProkordiManagerApp() {
       {/* ── Main ── */}
       <main style={{ flex:1, overflow:'auto', background:appBg, position:'relative' }} className="print:bg-white print:overflow-visible">
         {/* Header */}
-        <header style={{ background:headerBg, backdropFilter:'blur(12px)', borderBottom:`1px solid ${borderClr}`, height:60, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 24px', position:'sticky', top:0, zIndex:30, boxShadow:'0 1px 8px rgba(0,0,0,.04)' }} className="print:hidden no-print">
-          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+        <header style={{ background:headerBg, backdropFilter:'blur(12px)', borderBottom:`1px solid ${borderClr}`, height:60, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 24px', position:'sticky', top:0, zIndex:30, boxShadow:'0 1px 8px rgba(0,0,0,.04)' }} className="app-header print:hidden no-print">
+          <div style={{ display:'flex', alignItems:'center', gap:10,minWidth:0 }}>
             <div style={{ padding:8, background:dark?'rgba(99,102,241,.2)':'#eef2ff', borderRadius:12, color:'#6366f1' }}>
               {tabMeta[activeTab]?.icon}
             </div>
             <h2 style={{ fontSize:15, fontWeight:700, color:textPrimary }}>{tabMeta[activeTab]?.label}</h2>
           </div>
-          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <button onClick={()=>setCacheModal(true)} aria-label="Tamamen sıfırla" title="Tamamen sıfırla" style={{padding:8,borderRadius:10,color:'#b91c1c',background:'#fef2f2',border:'none',cursor:'pointer'}}><Trash size={17}/></button>
-            <Saat dark={dark}/>
-            <button onClick={()=>window.print()}
-              style={{ display:'flex', alignItems:'center', gap:7, padding:'8px 16px', borderRadius:12, fontSize:13, fontWeight:700, color:'white', background:'#1e293b', border:'none', cursor:'pointer', boxShadow:'0 1px 4px rgba(0,0,0,.1)', transition:'all .2s' }}>
-              <Printer size={14}/> Yazdır
-            </button>
+          <div className="app-header-tools">
+            <span className="app-clock"><Saat dark={dark}/></span>
+            <button className="ui-tool" onClick={()=>setDark(d=>!d)} aria-label={dark?'Aydınlık mod':'Karanlık mod'}>{dark?<Sun size={15}/>:<Moon size={15}/>}<span>{dark?'Açık mod':'Koyu mod'}</span></button>
+            <button className="ui-tool danger" onClick={()=>setCacheModal(true)} aria-label="Tamamen sıfırla"><Trash size={15}/><span>Sıfırla</span></button>
+            <button className="ui-tool primary" onClick={()=>window.print()}><Printer size={15}/>Yazdır</button>
           </div>
         </header>
 
         {/* Content */}
         <div style={{ padding:24, minHeight:'calc(100vh - 60px)', maxWidth:1700, margin:'0 auto' }} id="printable-section" className="print:p-0">
-          {(activeTab==='scheduler')&&<SessionBar sessions={sessions} currentId={sessionId} onSelect={selectSession} onChange={changeSessions}/>}
+          {(activeTab==='scheduler')&&<SessionBar compact sessions={sessions} currentId={sessionId} onSelect={selectSession} onChange={changeSessions}/>}
           {renderContent()}
         </div>
 

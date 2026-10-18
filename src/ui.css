@@ -1,0 +1,84 @@
+/* Screen composition is independent of the millimetre-based print layouts. */
+@media screen {
+ :root{--ui-ink:#17263c;--ui-muted:#52647b;--ui-line:#dde5ef;--ui-tint:#f5f7fb;--ui-accent:#4f46e5}
+ .app-shell[data-theme=dark]{--ui-ink:#e2e8f0;--ui-muted:#b1bfd1;--ui-line:#334155;--ui-tint:#162033;--ui-accent:#a5b4fc}
+ .app-shell main{min-width:0;scroll-padding-top:92px}
+ .app-sidebar nav{display:flex;flex-direction:column;gap:6px}
+ .app-sidebar nav button{min-height:48px;color:var(--ui-muted);border:1px solid transparent}
+ .app-sidebar nav button[aria-current=page]{color:var(--ui-accent);background:var(--ui-tint);border-color:var(--ui-line);font-weight:800}
+ .app-header{gap:16px;min-height:76px;height:auto!important;padding:12px 24px!important}
+ .app-header h2{font-size:18px!important;letter-spacing:-.4px;line-height:1.3}
+ .app-header-tools{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px}
+ .ui-tool{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:42px;padding:9px 13px;border:1px solid var(--ui-line);border-radius:12px;color:var(--ui-ink);background:transparent;font-size:13px;font-weight:650;line-height:1.3;cursor:pointer;white-space:normal;text-align:center}
+ .ui-tool:hover{background:var(--ui-tint)}.ui-tool.primary{background:#4f46e5;border-color:#4f46e5;color:white}.ui-tool.danger{color:#b91c1c}
+ .app-shell[data-theme=dark] .ui-tool.danger{color:#fda4af}
+ .ui-controls button,.ui-controls summary,.ui-controls input:not([type=checkbox]):not([type=range]),.ui-controls select{min-height:44px}
+ .ui-controls input,.ui-controls select,.ui-controls textarea{max-width:100%;min-width:0}.ui-controls input[type=checkbox]{width:18px;height:18px;accent-color:#4f46e5;flex-shrink:0}
+ .ui-controls details>summary{display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid var(--ui-line);border-radius:10px;font-size:13px;font-weight:650;list-style:none;cursor:pointer}
+ .ui-controls details>summary::before{content:'＋';font-size:16px;color:var(--ui-accent)}.ui-controls details[open]>summary::before{content:'−'}
+ .ui-section-label{display:block;color:var(--ui-muted);font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px}
+ .workflow-panel{padding:14px!important;box-shadow:0 2px 8px #14243b04}
+ .workflow-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+ .workflow-heading h3{font-size:15px;font-weight:750;color:var(--ui-ink)}.workflow-heading p{font-size:12px;color:var(--ui-muted)}
+ .workflow-steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+ .workflow-steps button{justify-content:flex-start;min-height:58px;padding:12px!important;border:1px solid var(--ui-line);text-align:left;line-height:1.35;min-width:0;white-space:normal}
+ .workflow-steps button[aria-current=step]{border-color:#4f46e5;background:#4f46e5;color:white;box-shadow:0 4px 12px #4f46e51a}
+ .workflow-steps button svg{flex-shrink:0}
+ .workflow-files{display:flex;flex-wrap:wrap;align-items:start;gap:12px;border-top:1px solid var(--ui-line);padding-top:14px;margin-top:14px}
+ .workflow-files .file-group{display:flex;flex-wrap:wrap;align-items:center;gap:6px}.workflow-files .file-group-title{color:var(--ui-muted);font-size:11px;font-weight:750;width:100%;margin-bottom:2px}
+ .workflow-files .file-group:last-child{margin-left:auto}
+ .workflow-next{padding:12px 16px!important}.workflow-next button{background:#4f46e5;color:white!important;padding:10px 16px;border-radius:11px}
+ .plan-actions{padding:18px!important;display:flex;flex-wrap:wrap;gap:12px;align-items:center}.plan-action-title{flex:1;min-width:180px}.plan-action-title h3{font-size:18px;font-weight:800;color:var(--ui-ink)}.plan-action-title p{font-size:12px;color:var(--ui-muted);margin-top:3px}.plan-actions button{min-height:48px}
+ .school-context{padding:18px!important}.school-context-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.school-context-top h3{color:var(--ui-ink);font-size:14px;font-weight:750}
+ .school-fields{display:grid;grid-template-columns:1fr 1.3fr 1fr;gap:12px}.school-fields label{font-size:12px;color:var(--ui-muted);font-weight:600}.school-fields input,.school-fields select{display:block;width:100%;margin-top:6px!important;margin-left:0!important;font-size:14px}
+ .school-new{display:flex;flex-wrap:wrap;gap:8px;padding-top:12px;border-top:1px solid var(--ui-line)}
+ .control-section{padding:20px!important}.control-section>h3:first-child{font-size:22px;letter-spacing:-.5px;margin-bottom:8px}.control-section>p{color:var(--ui-muted);font-size:13px;line-height:1.6;max-width:85ch}
+ .control-section .control-group{padding:16px;border:1px solid var(--ui-line);border-radius:14px;background:var(--ui-tint)}
+ .control-section .control-group>h4{font-size:13px;font-weight:750;color:var(--ui-ink);margin-bottom:12px}
+ .control-section .print-action{background:#4f46e5!important;color:white!important;border-color:#4f46e5!important;font-weight:750;min-height:46px}
+ .preview-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:18px 0 10px;color:var(--ui-muted);font-size:12px;font-weight:750}
+ .activity-card{padding:18px!important}.activity-card .activity-config{padding-top:12px;border-top:1px solid var(--ui-line)}.activity-card input[type=number]{min-height:40px!important}.activity-card button{min-height:38px}.activity-card label{align-items:center;min-height:38px}
+ .activity-browse{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.activity-browse input{flex:1;min-width:160px!important}.activity-browse button{min-width:110px}
+ .volunteer-search{max-width:460px;width:100%;margin-bottom:16px}
+ .welcome-grid{display:grid;grid-template-columns:1.05fr 1fr;gap:12px}.welcome-grid .welcome-card{min-height:120px;padding:22px!important;border-radius:18px!important;position:relative;display:grid;grid-template-columns:30px 1fr 20px;gap:10px 14px;align-content:center;align-items:center}.welcome-grid .welcome-card h3{margin:0!important;font-size:18px!important}.welcome-grid .welcome-card p{grid-column:2;font-size:13px!important;min-height:0!important;line-height:1.5}.welcome-grid .welcome-card>svg:last-child{grid-column:3;grid-row:1/3;margin:0!important}.welcome-grid .welcome-card:first-child{grid-row:1/4;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;background:#292569!important;border-color:#292569!important;color:white!important;padding:34px!important;min-height:330px}.welcome-grid .welcome-card:first-child h3{font-size:32px!important;letter-spacing:-.7px}.welcome-grid .welcome-card:first-child p{color:#dfdefa!important;font-size:16px!important;max-width:26ch}.welcome-grid .welcome-card:first-child>svg{color:#c6c2ff!important}.welcome-context{margin-top:28px}.welcome-reset{display:flex;justify-content:flex-end;margin-top:12px}.welcome-reset button{min-height:44px;font-size:12px;color:#a72637;padding:8px 12px;border:1px solid #efdae0;border-radius:10px}
+ @media(max-width:1100px){.app-clock{display:none}.workflow-steps{grid-template-columns:repeat(2,minmax(0,1fr))}.app-header h2{font-size:16px!important}.app-header{padding:12px 18px!important}.app-header-tools .ui-tool{padding:9px 10px}.school-fields{grid-template-columns:1fr 1fr}.school-fields label:last-child{grid-column:1/-1}}
+ @media(max-width:700px){
+  .app-shell{flex-direction:column!important}.app-sidebar{width:100%!important;max-height:none!important;display:block!important;border-right:0!important;border-bottom:1px solid var(--ui-line);overflow:visible!important}.app-sidebar>div{display:none!important}.app-sidebar nav{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px!important;padding:6px!important;margin:0!important}.app-sidebar nav button{display:flex!important;flex-direction:column;justify-content:center;align-items:center;gap:5px;width:100%!important;padding:7px 2px!important;min-height:64px;font-size:10px;line-height:1.2;text-align:center;white-space:normal!important;border-radius:10px}.app-sidebar nav button>svg:last-child{display:none}.app-sidebar nav button svg{width:19px;height:19px}.app-sidebar nav button>span:last-of-type{max-width:100%}
+  .app-shell main{scroll-padding-top:126px}.app-header{display:block!important;padding:12px!important;min-height:110px}.app-header>div:first-child{margin-bottom:10px}.app-header-tools{justify-content:flex-start;gap:6px}.app-header-tools .ui-tool{font-size:12px;min-height:40px;flex:1;padding:8px}.app-header-tools .ui-tool.primary{flex:1.3}
+  #printable-section{padding:12px!important}.workflow-panel,.school-context,.control-section{padding:14px!important}.workflow-heading{display:block}.workflow-heading p{margin-top:4px}.workflow-steps{gap:6px}.workflow-steps button{font-size:12px;min-height:54px}.workflow-files{gap:12px}.workflow-files .file-group{width:100%}.workflow-files .ui-tool{flex:1;font-size:12px;padding:8px}.workflow-files .file-group:last-child{margin-left:0}.workflow-next{align-items:stretch!important}.workflow-next button{width:100%}.school-fields{grid-template-columns:1fr}.school-fields label:last-child{grid-column:auto}.school-context-top .ui-tool{font-size:12px}.plan-actions{padding:14px!important;gap:8px}.plan-action-title{flex-basis:100%}.plan-actions button{flex:1;justify-content:center;font-size:12px}.control-section .control-group{padding:12px}.welcome-grid{grid-template-columns:1fr}.welcome-grid .welcome-card:first-child{grid-row:auto;min-height:190px;padding:24px!important}.welcome-grid .welcome-card:first-child h3{font-size:28px!important}.welcome-grid .welcome-card{min-height:110px}.welcome-context{margin-top:22px}.activity-browse input{flex-basis:100%}.preview-heading{font-size:11px}
+ }
+ @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
+}
+@media screen {
+ [role=dialog]>div{max-height:calc(100dvh - 32px);overflow:auto}
+ .ui-controls .control-group button{border:1px solid var(--ui-line);border-radius:9px;padding:8px 10px;text-decoration:none}
+ .ui-controls .control-group label{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+ .ui-controls .control-group input[type=range]{max-width:180px}
+ .app-shell[data-theme=dark] .workflow-steps button:not([aria-current=step]){color:#cbd5e1;background:#162033}
+}
+@media screen {
+ .school-compact{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}.school-select label{display:block;font-size:12px;color:var(--ui-muted)}.school-select select{width:100%;margin:6px 0 0!important}.school-compact>details{padding-top:20px}.school-edit{grid-template-columns:1fr 1fr;margin-top:12px}.school-edit label:last-child{grid-column:auto}
+ @media(max-width:700px){
+  .app-sidebar nav>button{margin:0!important;height:70px!important}
+  .school-compact{grid-template-columns:1fr}.school-compact>details{padding-top:0}.school-compact .school-edit{grid-template-columns:1fr}.school-context-top{margin-bottom:8px}
+  .plan-actions{position:fixed;left:12px;right:12px;bottom:calc(10px + env(safe-area-inset-bottom));z-index:40;box-shadow:0 5px 30px #17263c30;border:1px solid var(--ui-line);margin:0!important;padding:10px!important;gap:8px}
+  .plan-actions .plan-action-title{display:none}.plan-actions button{min-height:48px;padding:10px!important}
+  .app-shell[data-section=scheduler] #printable-section{padding-bottom:116px!important}
+  .app-shell[data-section=scheduler] .animate-notification{bottom:12px!important;left:12px;right:12px}
+ }
+}
+@media screen {
+ .welcome-grid .welcome-card:first-child>svg{stroke:currentColor!important}
+ .school-date{display:block;font-size:11px;color:var(--ui-muted);font-weight:500;margin-top:3px}
+ .schedule-clear{display:flex;gap:4px;align-items:center;justify-content:center;min-height:32px;margin:5px auto;padding:5px 8px;font-size:10px;font-weight:650}
+ .excel-table [role=button]:focus-visible{outline:3px solid #818cf8;outline-offset:-3px}
+}
+@media screen {
+ .workflow-steps button[aria-current=step]{background:#eef2ff;color:#3730a3;border-color:#a5b4fc;box-shadow:none}
+ .workflow-next button{background:var(--ui-tint);color:var(--ui-accent)!important;border:1px solid var(--ui-line)}
+ .app-shell[data-section=scheduler] .app-header .ui-tool.primary{background:var(--ui-tint);border-color:var(--ui-line);color:var(--ui-ink)}
+ .activity-browse button[aria-pressed=true],.activity-card button[aria-pressed=true]{background:#eef2ff!important;color:#3730a3!important;border:1px solid #a5b4fc}
+ .app-shell[data-theme=dark] .workflow-steps button[aria-current=step]{background:#312e81;color:#e0e7ff;border-color:#818cf8}
+ .app-shell[data-theme=dark] .activity-browse button[aria-pressed=true],.app-shell[data-theme=dark] .activity-card button[aria-pressed=true]{background:#312e81!important;color:#e0e7ff!important;border-color:#818cf8}
+ @media(max-width:700px){.app-shell .animate-notification{bottom:12px!important;left:12px;right:12px;pointer-events:none}.app-shell:has(.plan-actions) .animate-notification{bottom:104px!important}}
+}
