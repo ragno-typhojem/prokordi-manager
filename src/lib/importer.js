@@ -1,7 +1,7 @@
 // src/lib/importer.js — Excel / CSV / TSV / serbest yapıştırma → tek giriş noktası.
 // Kullanıcı ne yapıştırırsa yapıştırsın türü kendi anlar: program, gönüllü, etkinlik, sınıf, isim.
 
-import { uid, norm, find, addMin } from './util';
+import { uid, norm, addMin, validateTimeSlots } from './util';
 
 const TIME = /(\d{1,2})[:.](\d{2})/;
 const TIME_RANGE = /(\d{1,2})[:.](\d{2})\s*(?:[-–—]|\s)\s*(\d{1,2})[:.](\d{2})/;
@@ -22,17 +22,20 @@ export async function readFile(file) {
 
 /** Serbest metni satır/sütun matrisine çevirir; ayırıcıyı kendi bulur. */
 export function splitText(text) {
-  const lines = String(text).replace(/^﻿/, '').split(/\r?\n/).filter((l) => l.trim());
-  if (!lines.length) return [];
-  // en tutarlı ayırıcıyı seç: satırların çoğunda aynı sayıda alan üretmeli
-  const cand = ['\t', ';', ',', '|'].map((d) => {
-    const counts = lines.slice(0, 20).map((l) => l.split(d).length);
-    const mode = counts.sort((a, b) => a - b)[Math.floor(counts.length / 2)];
-    return { d, mode, ok: mode > 1 && counts.filter((c) => c === mode).length / counts.length > 0.6 };
-  }).filter((x) => x.ok).sort((a, b) => b.mode - a.mode)[0];
-
-  const unq = (s) => s.replace(/^\s*"(.*)"\s*$/s, '$1').replace(/""/g, '"').trim();
-  return lines.map((l) => (cand ? l.split(cand.d).map(unq) : [unq(l)]));
+  const raw=String(text).replace(/^\uFEFF/,'');
+  const first=raw.split(/\r?\n/).find(l=>l.trim())||'';
+  const counts=['\t',';',',','|'].map(d=>({d,n:first.split(d).length})).sort((a,b)=>b.n-a.n);
+  const delimiter=counts[0].n>1?counts[0].d:null;
+  const rows=[];let row=[],cell='',quoted=false;
+  for(let i=0;i<raw.length;i++){
+    const ch=raw[i];
+    if(ch==='"'){if(quoted&&raw[i+1]==='"'){cell+='"';i++;}else if(quoted||!cell.trim()){quoted=!quoted;}else cell+=ch;}
+    else if(ch===delimiter&&!quoted){row.push(cell.trim());cell='';}
+    else if((ch==='\n'||ch==='\r')&&!quoted){if(ch==='\r'&&raw[i+1]==='\n')i++;row.push(cell.trim());if(row.some(Boolean))rows.push(row);row=[];cell='';}
+    else cell+=ch;
+  }
+  if(quoted)throw new Error('CSV içinde kapanmamış tırnak var. Dosyayı kontrol edin.');
+  row.push(cell.trim());if(row.some(Boolean))rows.push(row);return rows;
 }
 
 /** İçeriğe bakarak türü tahmin eder. */
@@ -43,7 +46,7 @@ export function detectKind(rows) {
 
   // ilk sütunu saat olan satırlar çoğunluktaysa → program tablosu
   const timeRows = body.filter((r) => TIME.test(String(r[0] || ''))).length;
-  if (timeRows >= 2 && timeRows >= body.length * 0.4) return 'schedule';
+  if (timeRows >= 1 && (/saat|time/.test(head) || timeRows >= body.length * 0.4)) return 'schedule';
 
   if (/gonullu|isim|ad soyad|katilimci/.test(head) && /etkinlik|yetenek|yetkinlik|yapabil/.test(head)) return 'volunteers';
   if (/etkinlik|aktivite|atolye/.test(head) && /(kutu|stok|zorunlu|must|sinif|seviye)/.test(head)) return 'activities';
@@ -70,20 +73,20 @@ const isHeaderRow = (r) => /^(isim|ad|ad soyad|gonullu|etkinlik|aktivite|sinif|s
  * @returns {{activities?,volunteers?,timeSlots?,classes?,_kind:string,_summary:string}}
  */
 export function toStatePatch({ kind, rows }, state) {
-  const A = [...(state.activities || [])];
-  const V = [...(state.volunteers || [])];
+  const A = (state.activities || []).map(a=>({...a,allowedGrades:[...(a.allowedGrades||[])]}));
+  const V = (state.volunteers || []).map(v=>({...v,capabilities:[...(v.capabilities||[])]}));
 
   const getAct = (name) => {
     const n = String(name || '').trim();
     if (!n) return null;
-    let a = find(A, n);
-    if (!a) { a = { id: uid(), name: n, cat: 'science', isMust: false, boxCount: 10, allowedGrades: [] }; A.push(a); }
+    let a = A.find(a=>norm(a.name)===norm(n));
+    if (!a) { a = { id: uid(), name: n, cat: 'science', isMust: false, boxCount: 0, allowedGrades: [], planningReady:false }; A.push(a); }
     return a;
   };
   const getVol = (name) => {
     const n = String(name || '').trim();
     if (!n) return null;
-    let v = find(V, n);
+    let v = V.find(v=>norm(v.name)===norm(n));
     if (!v) { v = { id: uid(), name: n, capabilities: [] }; V.push(v); }
     return v;
   };
@@ -118,7 +121,7 @@ export function toStatePatch({ kind, rows }, state) {
       if (A.length > before) added++;
       if (iM >= 0 && r[iM]) a.isMust = /evet|var|x|✓|1|true|zorunlu/i.test(r[iM]);
       if (iB >= 0 && r[iB]) a.boxCount = Number(String(r[iB]).match(/\d+/)?.[0]) || a.boxCount;
-      if (iG >= 0 && r[iG]) a.allowedGrades = (String(r[iG]).match(/\d/g) || []).map(Number);
+      if (iG >= 0 && r[iG]) a.allowedGrades = (String(r[iG]).match(/\d+/g) || []).map(Number).filter(g=>g>=1&&g<=12);
     });
     return { activities: A, _kind: 'etkinlik', _summary: `${added} yeni etkinlik, ${A.length} toplam` };
   }
@@ -142,7 +145,7 @@ export function toStatePatch({ kind, rows }, state) {
 
   const classes = names.map((n) => {
     const ex = (state.classes || []).find((c) => norm(c.name) === norm(n));
-    return ex ? { ...ex, schedule: {} } : { id: uid(), name: n, schedule: {} };
+    return ex ? { ...ex, schedule: {...ex.schedule} } : { id: uid(), name: n, schedule: {} };
   });
 
   const timeSlots = [];
@@ -157,7 +160,8 @@ export function toStatePatch({ kind, rows }, state) {
     const type = /ogle|yemek|lunch/.test(joined) ? 'lunch'
       : /teneffus|mola|ara$|break/.test(joined) ? 'break'
       : cells.every((c) => !String(c).trim()) ? 'break' : 'lesson';
-    const slot = { id: uid(), start, end: end || start, type };
+    const old=(state.timeSlots||[]).find(s=>s.start===start && (!end || s.end===end));
+    const slot = { id: old?.id || uid(), start, end: end || start, type };
     timeSlots.push(slot);
     bodyRows.push({ slot, cells });
   });
@@ -167,6 +171,7 @@ export function toStatePatch({ kind, rows }, state) {
     if (s.end === s.start) s.end = timeSlots[i + 1]?.start || addMin(s.start, 40);
   });
 
+  const issues=validateTimeSlots(timeSlots);if(issues.length)throw new Error(issues.join(' '));
   bodyRows.forEach(({ slot, cells }) => {
     if (slot.type !== 'lesson') return;
     cells.forEach((cell, i) => {
@@ -191,7 +196,7 @@ export function toStatePatch({ kind, rows }, state) {
   });
 
   return {
-    classes, timeSlots, activities: A, volunteers: V,
+    classes:[...classes,...(state.classes||[]).filter(c=>!classes.some(x=>x.id===c.id))], timeSlots:[...timeSlots,...(state.timeSlots||[]).filter(s=>!timeSlots.some(x=>x.id===s.id))], activities: A, volunteers: V,
     _kind: 'program',
     _summary: `${classes.length} sınıf, ${timeSlots.length} saat, ${A.length} etkinlik`,
   };

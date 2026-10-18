@@ -16,7 +16,7 @@ export const DB_KEYS = {
 };
 
 const write = (key) => {
-  try { localStorage.setItem(key, JSON.stringify(cache.get(key))); } catch { /* kota dolu */ }
+  try { localStorage.setItem(key, JSON.stringify(cache.get(key))); } catch { if(typeof window!=='undefined')window.dispatchEvent(new CustomEvent('prokordi-storage-error')); }
 };
 
 export const db = {

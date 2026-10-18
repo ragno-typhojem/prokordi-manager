@@ -59,17 +59,35 @@ export const findAll = (list, names, key = 'name') =>
 
 const HHMM = /^(\d{1,2})[:.](\d{2})$/;
 
-export const addMin = (t, d) => {
-  const m = HHMM.exec(String(t || '09:00'));
-  const base = m ? +m[1] * 60 + +m[2] : 540;
-  const x = Math.max(0, base + (Number(d) || 0));
-  return `${String(Math.floor(x / 60) % 24).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`;
+export const toMin = (t) => {
+  const m = HHMM.exec(String(t || '').trim());
+  return m && +m[1] < 24 && +m[2] < 60 ? +m[1] * 60 + +m[2] : -1;
 };
 
-export const toMin = (t) => {
-  const m = HHMM.exec(String(t || ''));
-  return m ? +m[1] * 60 + +m[2] : -1;
+export const formatMin = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+export const normalizeTime = (t) => toMin(t) < 0 ? null : formatMin(toMin(t));
+export const addMin = (t, d) => {
+  const base = toMin(t), duration = Number(d);
+  const end = base + duration;
+  return base >= 0 && Number.isInteger(duration) && end >= 0 && end < 1440 ? formatMin(end) : null;
 };
+
+export const validateTimeSlots = (slots) => {
+  const errors = [], ids = new Set();
+  const sorted = [...slots].sort((a,b) => toMin(a.start) - toMin(b.start));
+  sorted.forEach((slot, i) => {
+    if (!slot.id || ids.has(slot.id)) errors.push('Saat satırlarının kimlikleri benzersiz olmalı.');
+    ids.add(slot.id);
+    const start = toMin(slot.start), end = toMin(slot.end);
+    if (start < 0 || end < 0) errors.push(`${i+1}. satır: Saati 09:00 veya 09.00 biçiminde girin.`);
+    else if (end <= start) errors.push(`${slot.start}: Bitiş başlangıçtan sonra olmalı; aynı gün içinde planlayın.`);
+    if (!['lesson','break','lunch','presentation'].includes(slot.type)) errors.push(`${i+1}. satır: Geçersiz saat türü.`);
+    if (i && start >= 0 && toMin(sorted[i-1].end) > start) errors.push(`${sorted[i-1].start}–${sorted[i-1].end} ile ${slot.start}–${slot.end} çakışıyor.`);
+  });
+  return [...new Set(errors)];
+};
+
+export const canonicalSlots = (slots) => slots.map(s => ({...s,start:normalizeTime(s.start),end:normalizeTime(s.end)})).sort((a,b)=>toMin(a.start)-toMin(b.start));
 
 /**
  * Slot çözümleme — AI ya da kullanıcı ne yazarsa yazsın:
@@ -99,7 +117,7 @@ export const findSlot = (slots, q) => {
   const times = raw.match(/\d{1,2}[:.]\d{2}/g);
   if (times?.length) {
     const target = toMin(times[0].replace('.', ':'));
-    let best = null, diff = 31;
+    let best = null, diff = 1;
     for (const s of slots) {
       const d = Math.abs(toMin(s.start) - target);
       if (d < diff) { diff = d; best = s; }

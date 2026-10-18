@@ -1,64 +1,37 @@
-# ProKordi Manager v5
+# ProKordi Manager 6
 
-Gönüllü etkinlik programı yöneticisi — otomatik veya manuel program kurma, isimlik matbaası, görsel kolaj ve resmi tutanak modülleri.
+İLKYAR etkinlik programı, gönüllü dağılımı, isimlik, kolaj ve yükleme kontrol listesi.
 
-## v5'te ne değişti
+## Kullanım
 
-| Alan | Eski | Yeni |
-|---|---|---|
-| **Model** | tek `llama-3.3-70b-versatile` (emekli oldu → uygulama çöküyordu) | 4'lü otomatik zincir (`gpt-oss-120b` → `kimi-k2` → `llama-4-maverick` → `8b-instant`), zorunlu JSON modu |
-| **Emir anlama** | düz prompt, AI'dan ID isteniyordu | AI sadece **isim** yazar, id çözümlemesi uygulamada; bulanık eşleşme ("eda" → "Eda Nur Keklik"), 20 aksiyon tipi, tek mesajda çoklu emir |
-| **İçe aktarma** | yalnızca CSV program tablosu | `.xlsx` / `.csv` / `.tsv` / sürükle-bırak / **doğrudan yapıştırma**; tür otomatik algılanır (program / gönüllü / etkinlik / sınıf / isim) |
-| **Performans** | her render'da tam tarama + her keystroke'ta `localStorage` yazımı | `Map`/`Set` indeksli tek geçiş, `useMemo`, 250 ms debounce'lu kayıt |
-| **Doğruluk** | kutu limiti dağıtımda gün geneli, uyarıda saat bazı sayılıyordu (tutarsız) | her ikisi de **saat bazında** — aynı kutu farklı saatte tekrar kullanılabilir |
-| **Bundle** | — | Excel okuyucu 900 KB'lık SheetJS yerine 3 KB'lık kendi okuyucumuz, ayrıca **lazy-load** |
+1. **Etkinlikler:** Drive kaynak bağlantıları ve hazırlık notları görünür. Yeni kayıtların kutu sayılarını ve uygun sınıf düzeylerini girip hazır olduğunu işaretleyin. Zorunlu seçimini yalnızca koordinatör yapar. Eski kullanıcı seçimleri korunur.
+2. **Gönüllüler:** İsim ve gerçek yetkinlikleri girin veya Excel/CSV/yapıştırma ile aktarın. Bir etkinlik atanması kişiye otomatik yetkinlik kazandırmaz.
+3. **Sınıf & Zaman:** 1–8 sınıflarda A–H hızlı seçimleri; 5-H, 9-C, 12-F gibi serbest sınıf adları. Yeni anaokulu kategorisi yok; eski kayıtlar silinmez. 08.00 veya başka başlangıç, etkinlik sayısı, süre, geçiş ve yemek arası ayarlanabilir. Saatler taslakta düzenlenir ve doğrulandıktan sonra kaydedilir. Atamalı satır kimlikleri korunur.
+4. **Program:** Dağıtım önce doluluğu, sonra koordinatörün zorunlu seçimlerini, çeşitliliği ve görev dengesini değerlendirir. Kutu, düzey, yetkinlik ve kişi çakışmalarını denetler. Uygun boş gönüllüler yardımcı olarak atanır. Her kişinin sorumluluk/yardımcı sayısı, dakika ve çeşitliliği raporlanır. Kaynaklar yetmiyorsa boşluk veya tekrar açıkça bildirilir; kusursuz eşitlik garantisi verilmez.
+5. **İçe aktarma:** XLSX, CSV, TSV ve metin; ayırıcılar ve tırnaklı alanlar desteklenir. Önizlemeden sonra uygulanır. Aynı sınıf/saat hücresi güncellenirken eşleşmeyen sınıflar/saatler korunur. Son program değişikliği geri alınabilir. JSON yedeği program, isimlik, kolaj ve kontrol listesini içerir.
+6. **Balkız:** “Programı doldur”, “Boş kalan yerleri doldur”, “Programı kontrol et” ve “Programı dengele” temel işleri yerelde çalıştırır. Serbest istekler `/api/chat` üzerinden Groq kullanır. Yanıtın uygulanabilir biçimi doğrulanır, gerçek işlem kaydı ve hesaplanan geri bildirim gösterilir. İstek sürerken program değişirse eski yanıt değişiklikleri ezmez. Ağ veya model hatasında program korunur.
+7. **İsimlik:** Gerçek mm ölçülerine göre A4 sayfalama. Varsayılan sıra her grup için isimler → arka yüzler → aynı isimler. Tekrar ve arka yüz sütun aynalaması isteğe bağlıdır. İsimleri, kart boyutunu, aralıkları ve yazı konumlarını düzenleyebilirsiniz. Görseller uygulamayla birlikte yerel sunulur.
+8. **Kolaj:** A4 dikey, sayfa başına en fazla 20 kişi, eşit hücreler. Başlık/adres, isimler, sıralama, fotoğraf ölçeği/konumu ve kenar payları düzenlenebilir. Büyük ekip yeni sayfalara ayrılır. Fotoğraf yükleme 12 MB ile sınırlı ve tarayıcıda küçültülür.
+9. **Sayfa kontrolü:** İsimlik ve kolajda Balkız görünen metinlerin gerçek taşmalarını ve yüklenmeyen görselleri bildirir. Tek tuşla yazı boyutu düzeltilebilir; son düzenleme yine kullanıcıdadır.
+10. **Kontrol Listesi:** Tutanak bölümü yerine etkinlik kutuları, ses/görüntü, belgeler ve son kontrol maddeleri bulunur. Tik, adet, sorumlu ve not düzenlenebilir; özel maddeler eklenebilir. Yatay A4 çıktısı alınır.
 
-## Mimari
+## Drive kaynakları (salt okunur inceleme, 18 Ekim 2026)
 
-```
-api/chat.js          Vercel serverless — Groq, model zinciri + JSON modu
-src/lib/util.js      Türkçe normalize, bulanık eşleşme, slot çözümleme
-src/lib/db.js        debounce'lu localStorage + bellek önbelleği
-src/lib/engine.js    çakışma tespiti + dağıtım (indeksli, O(n) yakın)
-src/lib/importer.js  Excel / CSV / yapıştırma → state yaması
-src/lib/xlsx.js      minimal .xlsx okuyucu (fflate, dinamik import)
-src/lib/ai.js        durum sıkıştırma, sistem promptu, aksiyon reducer'ı
-src/App.js           arayüz
-```
+- [Güncel Kılavuzlar](https://drive.google.com/drive/folders/1MRYaFiQ06PFLR8RGC9vknxNJpwSbUYvj)
+- [10.10.2026 Etkinlik Geliştirme Notları](https://drive.google.com/file/d/1X-82TCrEikWdVxsE_0Y09f7x993SZ20r/view)
+- [Koordinatör Kılavuzu](https://docs.google.com/document/d/1KxPbOq6TdqLI4Ck9H3X1qf2ARf-cdxl-/edit)
 
-`lib/` içindeki her şey saf fonksiyon: `applyActions(state, actions)` girdi state'ini
-değiştirmez, yeni state + insan-okunur log döndürür. Testler bunu doğrular.
+Katalog bir tarihli kaynak özetidir; Drive ile otomatik senkronizasyon yoktur. Kılavuzun klasörde bulunması etkinliğin hazırlık onayı anlamına gelmez. Tarih/arkeoloji/tiyatro/origami gibi geliştirme notları ayrı görünür. Etkinlik 101 ekip içi hazırlık toplantısı olduğundan okul etkinliği diye eklenmedi. Drive üzerinde hiçbir dosya oluşturulmadı, değiştirilmedi veya silinmedi.
 
-## Kurulum
+## Saklama ve doğrulama
 
-```bash
-npm install
-npm start          # http://localhost:3000
-npm test           # 25 birim testi
+Veriler bu tarayıcının localStorage alanındadır; hesaplar veya cihazlar arası sunucu senkronizasyonu yoktur. Depolama hatası görünür uyarı üretir. Fotoğraflar yalnızca kolaj verisinde saklanır; isimlik ölçüleri ve kolaj ayarları sekme değişimlerinde korunur. Düzenli JSON yedeği indirin.
+
+```sh
+npm ci
+npm test -- --watchAll=false --runInBand
 npm run build
+npm start
 ```
 
-## Vercel
-
-1. Repo'yu Vercel'e bağlayın (Framework: **Create React App**).
-2. **Settings → Environment Variables** → `GROQ_API_KEY` ekleyin ([console.groq.com](https://console.groq.com/keys)).
-3. Deploy. `api/chat.js` otomatik olarak serverless fonksiyon olur.
-
-Anahtar yoksa uygulama çalışır; yalnızca sohbet kutusu uyarı verir.
-
-## Sohbet kutusu ne anlar
-
-```
-3. ders 4-A'ya Kimya koy, Mehmet anlatsın
-Ayşe'yi ekle, origami ve drama yapabilir
-1-A ile 2-B'nin ilk derslerini değiştir
-boş kalan yerleri doldur
-zorunlular kalsın, gerisini sil
-Origami'nin kutu sayısını 5 yap ve zorunlu işaretle
-```
-
-Excel'den kopyaladığınız tabloyu doğrudan sohbet kutusuna yapıştırabilirsiniz —
-AI'ya gitmeden anında içe aktarılır.
-
----
-© 2026 [Mustafa Berke Şimşekler](https://github.com/ragno-typhojem) — MIT
+Vercel projesinde serbest dil yanıtları için sunucu tarafında `GROQ_API_KEY` gerekir; anahtar istemciye gömülmez. Fiziksel çift taraflı baskı hizalaması yazıcıya bağlıdır; önce bir grup üzerinde deneme baskısı alın.

@@ -10,7 +10,7 @@ const MODELS = [
 ];
 
 let groq;
-const client = () => (groq ??= new Groq({ apiKey: process.env.GROQ_API_KEY, maxRetries: 1 }));
+const client = () => (groq ??= new Groq({ apiKey: process.env.GROQ_API_KEY, maxRetries: 0, timeout: 6000 }));
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -39,11 +39,13 @@ module.exports = async function handler(req, res) {
       const r = await client().chat.completions.create({
         model: m,
         messages: list,
-        max_tokens: Number(max_tokens) || 2000,
+        max_tokens: Math.min(4000,Math.max(256,Number(max_tokens)||2000)),
         temperature: 0.2,
         top_p: 0.9,
         ...(json ? { response_format: { type: 'json_object' } } : {}),
       });
+      if(r.choices?.[0]?.finish_reason==='length')throw new Error('Yanıt tamamlanamadı.');
+      if(json){const p=JSON.parse(r.choices?.[0]?.message?.content||'{}');if(typeof p.message!=='string'||!Array.isArray(p.actions))throw new Error('Yanıt biçimi geçersiz.');}
       return res.status(200).json({
         content: r.choices?.[0]?.message?.content ?? '',
         model: m,
@@ -54,11 +56,11 @@ module.exports = async function handler(req, res) {
       errors.push(`${m}: ${status || ''} ${e?.message || e}`.trim());
       // model kapandı / bulunamadı / kota → sıradakini dene; gerçek istek hatasında dur
       const retryable = status === 404 || status === 429 || status === 503 || status >= 500 ||
-        /model|decommission|not found|deprecat/i.test(e?.message || '');
+        /model|decommission|not found|deprecat|timeout|zaman|biçimi|JSON|tamamlanamadı/i.test(e?.message || '');
       if (!retryable) break;
     }
   }
 
   console.error('Groq chain failed:', errors);
-  return res.status(502).json({ error: 'Tüm modeller başarısız', details: errors });
+  return res.status(502).json({ error: 'Balkız şu anda yanıt veremedi. Program değişmedi. Yerel dağıtım ve kontrol düğmelerini kullanabilirsiniz.' });
 };
