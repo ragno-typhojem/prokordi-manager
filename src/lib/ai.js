@@ -1,19 +1,22 @@
 // src/lib/ai.js — B.A.L.K.I.Z. çekirdeği.
 // Model konuşur, uygulama uygular: AI sadece isim yazar, id çözümlemesini burası yapar.
 
-import { uid, norm, find, findSlot, addMin, detectGrade, cloneClasses } from './util';
-import { distribute } from './engine';
+import { uid, norm, find, findSlot, addMin, detectGrade, cloneClasses, validateTimeSlots, canonicalSlots } from './util';
+import { distribute, planSummary, calculateConflicts } from './engine';
 import { parseAny, toStatePatch } from './importer';
+import { makeDay } from './templates';
+import {resolveActivity} from './catalog';
 
 // ── durumu sıkıştır (token tasarrufu: ~%80 daha az) ─────────────────────────
 export const compactState = ({ activities = [], volunteers = [], timeSlots = [], classes = [] }, warnings = []) => {
   const A = new Map(activities.map((a) => [a.id, a.name]));
   const lessons = timeSlots.filter((s) => s.type === 'lesson');
   return {
-    etkinlikler: activities.map((a) =>
-      `${a.name}${a.isMust ? '*' : ''} kutu:${a.boxCount ?? '-'} sinif:${(a.allowedGrades || []).join('') || 'hepsi'}`),
+    etkinlikler: activities.filter(a=>a.cat!=='presentation').map((a) =>
+      `${a.name}${a.isMust ? '*' : ''} kutu:${a.boxCount ?? '-'} sinif:${(a.allowedGrades || []).join(',') || 'secilmedi'} hazir:${a.planningReady!==false} tur:${a.cat||'science'}`),
     gonulluler: volunteers.map((v) =>
       `${v.name} → ${(v.capabilities || []).map((id) => A.get(id)).filter(Boolean).join(', ') || 'yetkinlik yok'}`),
+    topluSunumlar: timeSlots.filter(s=>s.type==='presentation').map(s=>`${s.start}-${s.end}: ${s.title||'Sunum'}`),
     dersler: lessons.map((s, i) => `${i + 1}. ${s.start}-${s.end}`),
     siniflar: classes.map((c) => {
       const dolu = lessons.map((s, i) => {
@@ -32,7 +35,13 @@ export const SYSTEM = `Sen B.A.L.K.I.Z.'sın: Türkçe konuşan, gönüllü etki
 SADECE geçerli JSON döndür: {"message": string, "actions": Action[]}. Başka hiçbir şey yazma.
 
 KURALLAR
-- Kullanıcı ne isterse aksiyona çevir. Belirsizse en makul yorumu yap ve message'da ne yaptığını söyle.
+- Yalnızca açık talebi aksiyona çevir. Belirsiz kişi, sınıf veya saatte tahmin etme; kısa bir netleştirme sorusu sor.
+- Zorunlu (must) yalnızca koordinatörün açık talebiyle işaretlenir. Kutu sayısı, uygun düzey ve yetkinlik uydurma.
+- Gün çizelgesi hazırlanırken en başa toplu sunum konabilir: load_template presentationMinutes (0 ise sunum yok). Sunum sırasında sınıflara etkinlik ve gönüllü atama.
+- Yeni etkinlik 1 kutu varsayımıyla eklenir. Atölyeleri cat:"workshop" ile ayır. Pino Mino İlkokul, Pino Mino Atölye ve Yapay Zeka Atölyesi ayrı kayıtlardır. İLKYAR tanıtımı bir toplu sunumdur, etkinlik oluşturma.
+- Anaokulu sınıfı oluşturma. Sınıf adı 5-H, 12-F gibi serbest olabilir.
+- Programda boşluk, çakışma veya eşitsizlik varsa çözümü öner; gerçek sonucu uygulama hesaplar. Uygulamadan önce tamamlandı deme.
+- Gönüllüye etkinlik atamak onun yetkinliğini değiştirmez. Yetkinlik değişikliği için açık talep gerekir.
 - Sadece soru soruyorsa actions boş olsun, message'da cevap ver.
 - İSİMLERİ YAZ, ID YAZMA. Yaklaşık yazsan da sistem eşleştirir ("eda" → "Eda Nur Keklik").
 - Slot için ders sırası (1,2,3) veya saat ("09:00") kullan.
@@ -43,14 +52,15 @@ ACTION TÜRLERİ
 {"type":"add_volunteer","name":"Ad Soyad","capabilities":["etkinlik adı",...]}
 {"type":"remove_volunteer","name":""}
 {"type":"set_capabilities","volunteer":"","capabilities":[""],"mode":"set|add|remove"}
-{"type":"add_activity","name":"","isMust":false,"boxCount":10,"grades":[1,2]}
-{"type":"update_activity","name":"","newName":"","isMust":true,"boxCount":5,"grades":[]}
+{"type":"add_activity","name":"","cat":"science|workshop","isMust":false,"boxCount":1,"grades":[1,2]}
+{"type":"update_activity","name":"","newName":"","isMust":true,"boxCount":5,"grades":[],"planningReady":true,"cat":"science|workshop"}
 {"type":"remove_activity","name":""}
 {"type":"add_class","name":"5-A"}
 {"type":"remove_class","name":""}
 {"type":"add_timeslot","start":"09:00","duration":40,"slotType":"lesson|break|lunch"}
+{"type":"update_timeslot","slot":1,"start":"08:00","end":"08:40"}
 {"type":"clear_timeslots"}
-{"type":"load_template"}
+{"type":"load_template","start":"08:00","lessons":6,"duration":40,"breakMinutes":10,"lunchMinutes":60,"lunchAfter":3,"presentationMinutes":30}
 {"type":"set_slot","class":"1-A","slot":3,"activity":"Origami","volunteer":"Eda","lock":false}
 {"type":"clear_slot","class":"","slot":1}
 {"type":"swap","classA":"","slotA":1,"classB":"","slotB":2}
@@ -80,6 +90,10 @@ export const extractJSON = (txt) => {
 
 // ── API çağrısı ─────────────────────────────────────────────────────────────
 export async function askBalkiz({ text, history = [], state, warnings = [], signal }) {
+  const n=norm(text);
+  if(/^(programi doldur|herkesi dagit|bos kalan yerleri doldur|esit ve cesitli dagit|programi dengele)$/.test(n))return {message:'Dağıtım hesaplanıyor.',actions:[{type:'distribute',onlyEmpty:n.startsWith('bos')}],model:'yerel-planlayici'};
+  if(/^(programi kontrol et|cakismalari goster|geri bildirim|feedback)$/.test(n))return {message:planSummary(state)+'\n'+calculateConflicts(state).slice(0,12).map(w=>w.msg).join('\n'),actions:[],model:'yerel-kontrol'};
+
   const messages = [
     ...history.slice(-8).map((h) => ({ role: h.role, content: String(h.content).slice(0, 1500) })),
     { role: 'user', content: `DURUM:\n${JSON.stringify(compactState(state, warnings))}\n\nİSTEK: ${text}` },
@@ -98,7 +112,10 @@ export async function askBalkiz({ text, history = [], state, warnings = [], sign
   if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
 
   const content = data.content ?? '';
-  const parsed = extractJSON(content) || { message: content, actions: [] };
+  const parsed = extractJSON(content);
+  if(!parsed || typeof parsed.message!=='string' || !Array.isArray(parsed.actions))throw new Error('Balkız yanıtı uygulanabilir biçimde değil. Program değişmedi; lütfen tekrar deneyin.');
+  if(!/sil|kaldır|temizle|sıfırla/i.test(text))parsed.actions=parsed.actions.filter(a=>!/^remove_|^clear_|^delete_|^no_class/.test(a.type||''));
+  if(!/zorunlu|must/i.test(text))parsed.actions=parsed.actions.map(a=>{const {isMust,...rest}=a;return rest;});
   return {
     message: parsed.message || 'Tamam.',
     actions: Array.isArray(parsed.actions) ? parsed.actions : [],
@@ -114,14 +131,9 @@ const cell = (act, vol, lock) => ({
 
 const NO_CLASS = { activityId: 'NO_CLASS', name: 'DERS YOK', cat: 'none', isMust: false, lead: '-', leadId: 'none', isLocked: true };
 
-const TEMPLATE = () => [
-  ['09:00', 40, 'lesson'], ['09:40', 15, 'break'], ['09:55', 40, 'lesson'], ['10:35', 15, 'break'],
-  ['10:50', 40, 'lesson'], ['11:30', 60, 'lunch'], ['12:30', 40, 'lesson'], ['13:10', 15, 'break'],
-  ['13:25', 40, 'lesson'],
-].map(([start, d, type]) => ({ id: uid(), start, end: addMin(start, d), type }));
-
 export function applyActions(state, actions) {
   let s = {
+    reservations:state.reservations||[],
     activities: [...state.activities],
     volunteers: [...state.volunteers],
     timeSlots: [...state.timeSlots],
@@ -130,18 +142,26 @@ export function applyActions(state, actions) {
   const log = [];
 
   const getAct = (name, create = true) => {
-    let a = find(s.activities, name);
+    let a = resolveActivity(s.activities,name) || find(s.activities, name);
     if (!a && create && name) {
-      a = { id: uid(), name: String(name).trim(), cat: 'science', isMust: false, boxCount: 10, allowedGrades: [] };
+      a = { id: uid(), name: String(name).trim(), cat: 'science', isMust: false, boxCount: 1, allowedGrades: [], planningReady:false };
       s.activities = [...s.activities, a];
       log.push(`+ etkinlik ${a.name}`);
     }
     return a;
   };
+  const resolveVolunteer = query => {
+    if(!query)return null;
+    const exact=s.volunteers.find(v=>v.id===query||norm(v.name)===norm(query));if(exact)return exact;
+    const matches=s.volunteers.filter(v=>norm(v.name).split(' ').includes(norm(query)));
+    if(matches.length>1)throw new Error('Bu adla birden fazla gönüllü var; ad ve soyad yazın.');
+    return matches[0]||find(s.volunteers,query);
+  };
   const setCell = (clsQ, slotQ, value) => {
-    const c = find(s.classes, clsQ);
+    const c = s.classes.find(c=>c.id===clsQ||norm(c.name)===norm(clsQ));
     const sl = findSlot(s.timeSlots, slotQ);
-    if (!c || !sl) { log.push(`? bulunamadı: ${clsQ} / ${slotQ}`); return null; }
+    if (!c || !sl || sl.type!=='lesson') { log.push(`? bulunamadı: ${clsQ} / ${slotQ}`); return null; }
+    if(c.schedule[sl.id]?.isLocked){log.push('Kilitli atama korundu.');return null;}
     if (value === null) delete c.schedule[sl.id];
     else c.schedule[sl.id] = value;
     return { c, sl };
@@ -183,19 +203,23 @@ export function applyActions(state, actions) {
         }
         case 'add_activity': {
           if (!a.name) break;
-          if (find(s.activities, a.name)) { log.push(`= ${a.name} zaten var`); break; }
+          if(/ilkyar tanitim/.test(norm(a.name))){log.push('? İLKYAR tanıtımını günün başlangıç sunumu olarak ekleyin.');break;}
+          if (resolveActivity(s.activities,a.name)) { log.push(`= ${a.name} zaten var`); break; }
           s.activities = [...s.activities, {
             id: uid(), name: String(a.name).trim(), cat: a.cat || 'science',
-            isMust: !!a.isMust, boxCount: a.boxCount ?? 10,
-            allowedGrades: a.grades || a.allowedGrades || [],
+            isMust: !!a.isMust, boxCount: a.boxCount ?? 1,
+            allowedGrades: a.grades || a.allowedGrades || [1,2,3,4,5,6,7,8], planningReady:true,
           }];
           log.push(`+ etkinlik ${a.name}`);
           break;
         }
         case 'update_activity': {
-          const act = find(s.activities, a.name);
+          const act = resolveActivity(s.activities,a.name) || find(s.activities, a.name);
           if (!act) { log.push(`? etkinlik yok: ${a.name}`); break; }
+          if(a.planningReady===true&&(!(Number(a.boxCount??act.boxCount)>0)||!(a.grades||a.allowedGrades||act.allowedGrades)?.length)){log.push('? Programa dahil etmek için kutu ve uygun sınıf düzeylerini belirtin.');break;}
           const patch = {
+            ...(typeof a.planningReady==='boolean'&&{planningReady:a.planningReady}),
+            ...(['science','workshop'].includes(a.cat)&&{cat:a.cat}),
             ...(a.newName && { name: a.newName }),
             ...(a.isMust != null && { isMust: !!a.isMust }),
             ...(a.boxCount != null && { boxCount: Number(a.boxCount) }),
@@ -210,7 +234,7 @@ export function applyActions(state, actions) {
           break;
         }
         case 'remove_activity': {
-          const act = find(s.activities, a.name);
+          const act = resolveActivity(s.activities,a.name) || find(s.activities, a.name);
           if (!act) { log.push(`? etkinlik yok: ${a.name}`); break; }
           s.activities = s.activities.filter((x) => x !== act);
           s.volunteers = s.volunteers.map((v) => ({ ...v, capabilities: (v.capabilities || []).filter((i) => i !== act.id) }));
@@ -219,7 +243,7 @@ export function applyActions(state, actions) {
           break;
         }
         case 'add_class': {
-          if (!a.name || find(s.classes, a.name)) break;
+          if (!a.name || /anaokul|ana sinif|kres/i.test(norm(a.name)) || s.classes.some(c=>norm(c.name)===norm(a.name))) break;
           s.classes = [...s.classes, { id: uid(), name: String(a.name).trim(), schedule: {} }];
           log.push(`+ sınıf ${a.name}`);
           break;
@@ -233,12 +257,20 @@ export function applyActions(state, actions) {
         }
         case 'add_timeslot': {
           const last = s.timeSlots[s.timeSlots.length - 1];
-          const start = a.start || last?.end || '09:00';
-          const type = a.slotType || a.type || 'lesson';
+          const start = a.start || last?.end || '08:00';
+          const type = a.slotType || 'lesson';
           const dur = a.duration || (type === 'lunch' ? 60 : type === 'break' ? 15 : 40);
-          s.timeSlots = [...s.timeSlots, { id: uid(), start, end: addMin(start, dur), type }];
+          const next=[...s.timeSlots, { id: uid(), start, end: a.end || addMin(start, dur), type }];
+          const errors=validateTimeSlots(next);if(errors.length)throw new Error(errors.join(' '));
+          s.timeSlots=canonicalSlots(next);
           log.push(`+ saat ${start}`);
           break;
+        }
+        case 'update_timeslot': {
+          const sl=findSlot(s.timeSlots,a.slot);if(!sl){log.push('Saat satırı bulunamadı.');break;}
+          const next=s.timeSlots.map(x=>x.id===sl.id?{...x,start:a.start||x.start,end:a.end||x.end}:x);
+          const errors=validateTimeSlots(next);if(errors.length)throw new Error(errors.join(' '));
+          s.timeSlots=canonicalSlots(next);log.push('Saat güncellendi; mevcut atamalar korundu.');break;
         }
         case 'clear_timeslots':
           s.timeSlots = [];
@@ -246,18 +278,17 @@ export function applyActions(state, actions) {
           log.push('× saatler temizlendi');
           break;
         case 'load_template':
-          s.timeSlots = TEMPLATE();
-          log.push('✓ standart şablon');
+          if(s.timeSlots.length){log.push('Saat şablonu uygulanmadı: mevcut saatler ve atamalar korundu. Sınıf & Zaman bölümünden düzenleyin.');break;}
+          s.timeSlots = makeDay(a);
+          log.push('08.00 veya belirtilen saatten başlayan gün şablonu oluşturuldu.');
           break;
         case 'set_slot':
         case 'update_slot': {
           const act = getAct(a.activity || a.activityName || a.name);
           if (!act) { log.push('? etkinlik belirtilmedi'); break; }
-          const vol = (a.volunteer || a.leadName || a.lead) ? find(s.volunteers, a.volunteer || a.leadName || a.lead) : null;
+          const vol = (a.volunteer || a.leadName || a.lead) ? resolveVolunteer(a.volunteer || a.leadName || a.lead) : null;
           const r = setCell(a.class || a.className || a.classId, a.slot ?? a.slotId, cell(act, vol, a.lock));
           if (r) {
-            if (vol && !(vol.capabilities || []).includes(act.id))
-              s.volunteers = s.volunteers.map((x) => (x === vol ? { ...x, capabilities: [...(x.capabilities || []), act.id] } : x));
             log.push(`~ ${r.c.name} ${r.sl.start} → ${act.name}${vol ? ` (${vol.name})` : ''}`);
           }
           break;
@@ -292,7 +323,7 @@ export function applyActions(state, actions) {
         }
         case 'distribute':
           s.classes = distribute(s, { onlyEmpty: !!a.onlyEmpty });
-          log.push('✓ dağıtım tamamlandı');
+          log.push(planSummary(s));
           break;
         case 'clear_schedule':
           s.classes = s.classes.map((c) => ({

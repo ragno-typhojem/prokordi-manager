@@ -16,7 +16,7 @@ export const DB_KEYS = {
 };
 
 const write = (key) => {
-  try { localStorage.setItem(key, JSON.stringify(cache.get(key))); } catch { /* kota dolu */ }
+  try { localStorage.setItem(key, JSON.stringify(cache.get(key))); } catch { if(typeof window!=='undefined')window.dispatchEvent(new CustomEvent('prokordi-storage-error')); }
 };
 
 export const db = {
@@ -44,13 +44,18 @@ export const db = {
   },
 
   clearAll() {
-    db.flush();
+    // Cancel pending writes so beforeunload cannot restore deleted records.
+    timers.forEach(clearTimeout);
+    timers.clear();
     cache.clear();
-    Object.values(DB_KEYS).forEach((k) => { try { localStorage.removeItem(k); } catch {} });
+    const legacy = new Set([...Object.values(DB_KEYS), 'balkiz_chat_v1']);
+    const keys = Object.keys(localStorage).filter(key => key.startsWith('prokordi_') || legacy.has(key));
+    keys.forEach(key => localStorage.removeItem(key));
   },
 };
 
 if (typeof window !== 'undefined') {
+  window.addEventListener('storage', event=>{if(event.key)cache.delete(event.key);else cache.clear();});
   window.addEventListener('beforeunload', db.flush);
   document.addEventListener('visibilitychange', () => { if (document.hidden) db.flush(); });
 }

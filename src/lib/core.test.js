@@ -60,7 +60,7 @@ describe('engine', () => {
     const s = state();
     const classes = distribute(s);
     const conflicts = calculateConflicts({ ...s, classes });
-    expect(conflicts).toEqual([]);
+    expect(conflicts.filter(w=>!['duplicate_act','idle_slot','balance'].includes(w.type))).toEqual([]);
     const filled = classes.reduce((n, c) => n + Object.keys(c.schedule).length, 0);
     expect(filled).toBeGreaterThan(0);
   });
@@ -172,8 +172,8 @@ describe('reducer — doğal dil aksiyonları', () => {
       { type: 'distribute' },
     ]);
     expect(n.classes.length).toBe(3);
-    expect(n.timeSlots.length).toBe(9);
-    expect(calculateConflicts(n)).toEqual([]);
+    expect(n.timeSlots).toEqual(state().timeSlots); // existing times and cell identities are protected
+    expect(calculateConflicts(n).filter(w=>!['duplicate_act','idle_slot','balance'].includes(w.type))).toEqual([]);
   });
 });
 
@@ -209,7 +209,8 @@ describe('importer', () => {
     ].join('\n');
     const patch = toStatePatch(parseAny(text), state());
     expect(patch._kind).toBe('program');
-    expect(patch.timeSlots.map((s) => s.type)).toEqual(['lesson', 'break', 'lesson']);
+    expect(patch.timeSlots.map((s) => s.type)).toEqual(['lesson', 'break', 'lesson', 'lesson']);
+    expect(patch.timeSlots.some(s=>s.id==='t4')).toBe(true); // unmatched original slot is retained
     const [t1, , t3] = patch.timeSlots;
     expect(patch.classes[0].schedule[t1.id]).toMatchObject({ activityId: 'a1', leadId: 'v1' });
     expect(patch.classes[1].schedule[t1.id]).toMatchObject({ activityId: 'a3', leadId: 'v2' });

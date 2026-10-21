@@ -1,4 +1,5 @@
 /* eslint-disable */
+import './ui.css';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Calendar, Users, FileText, Image as ImageIcon, Printer,
@@ -14,23 +15,20 @@ import {
 
 // ─── ÇEKİRDEK ────────────────────────────────────────────────────────────────
 import { db, DB_KEYS } from './lib/db';
-import { uid as uuid, norm } from './lib/util';
-import { calculateConflicts, distribute } from './lib/engine';
+import { uid as uuid, norm, validateTimeSlots, canonicalSlots } from './lib/util';
+import TimeEditor from './components/TimeEditor';
+import Checklist from './components/Checklist';
+import NameBadges from './components/NameBadges';
+import TeamCollage from './components/TeamCollage';
+import Welcome from './components/Welcome';
+import SessionBar from './components/SessionBar';
+import ClassPicker from './components/ClassPicker';
+import ActivityManager from './components/ActivityManager';
+import VolunteerEntry from './components/VolunteerEntry';
+import {sessionKeys,loadSessions,saveSessions,syncSessionRoster,crossSessionConflicts,sessionReservations,migrateSharedLibrary} from './lib/sessions';
+import { calculateConflicts, distribute, workload, planSummary } from './lib/engine';
 import { askBalkiz, applyActions } from './lib/ai';
 import { readFile, parseAny, toStatePatch } from './lib/importer';
-
-const syncVolunteers = (src = null) => {
-  const v = src || db.load(DB_KEYS.VOLUNTEERS, []);
-  db.save(DB_KEYS.VOLUNTEERS, v);
-  db.save(DB_KEYS.NAMETAG_VOLUNTEERS, v);
-  db.save(DB_KEYS.COLLAGE_VOLUNTEERS, v);
-  return v;
-};
-
-const IMAGES = {
-  NAME_BG:     "https://i.ibb.co/9Hcchfq8/ntaraf.png",
-  QUESTION_BG: "https://i.ibb.co/mVYxB8j2/Ekran-g-r-nt-s-2026-01-12-202232.png"
-};
 
 // ─── GLOBAL STYLES ────────────────────────────────────────────────────────────
 const buildCSS = (dark) => `
@@ -38,7 +36,8 @@ const buildCSS = (dark) => `
 @import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800;900&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; }
-body { font-family: 'DM Sans', sans-serif; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Geist', sans-serif; }
+button,input,select,textarea{font:inherit} button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #a5b4fc;outline-offset:2px}
 .font-comic { font-family: 'Comic Neue', cursive; }
 .font-mono  { font-family: 'DM Mono', monospace; }
 .font-400 { font-weight: 400; }
@@ -292,7 +291,7 @@ body { font-family: 'DM Sans', sans-serif; }
 .dk-bg   { background:${dark?'#1e293b':'white'} !important; }
 .dk-border { border-color:${dark?'#334155':'#e2e8f0'} !important; }
 .dk-text  { color:${dark?'#e2e8f0':'#1e293b'} !important; }
-.dk-text-muted { color:${dark?'#64748b':'#94a3b8'} !important; }
+.dk-text-muted { color:${dark?'#94a3b8':'#64748b'} !important; }
 .dk-input { background:${dark?'#0f172a':'white'} !important; border-color:${dark?'#334155':'#e2e8f0'} !important; color:${dark?'#e2e8f0':'#1e293b'} !important; }
 .dk-hover:hover { background:${dark?'rgba(51,65,85,.6)':'rgba(241,245,249,.8)'} !important; }
 .dk-sidebar { background:${dark?'#0f172a':'white'} !important; border-color:${dark?'#1e293b':'#e2e8f0'} !important; }
@@ -317,23 +316,24 @@ body { font-family: 'DM Sans', sans-serif; }
   html,body { height:auto!important; overflow:visible!important; margin:0!important; padding:0!important; background:white!important; }
   #root > div { display:block!important; height:auto!important; overflow:visible!important; }
   .no-print   { display:none!important; }
-  aside,header{ display:none!important; }
+  .app-sidebar,main>header{ display:none!important; }
   main { height:auto!important; overflow:visible!important; display:block!important; position:static!important; padding:0!important; background:white!important; }
   #printable-section { padding:0!important; max-width:none!important; }
   * { -webkit-print-color-adjust:exact!important; print-color-adjust:exact!important; }
-  .print-page { margin:0!important; box-shadow:none!important; border:none!important; padding:5mm!important; page-break-after:always!important; break-after:page!important; page-break-inside:avoid!important; overflow:hidden!important; }
+  .print-page { margin:0!important; box-shadow:none!important; border:none!important;  page-break-after:always!important; break-after:page!important; page-break-inside:avoid!important; overflow:hidden!important; }
   .print-page:last-child { page-break-after:auto!important; break-after:auto!important; }
   @page { size:A4 portrait; margin:0; }
   .collage-print-strict { width:210mm!important; height:297mm!important; max-height:297mm!important; page-break-after:avoid!important; overflow:hidden!important; display:flex!important; flex-direction:column!important; box-sizing:border-box!important; }
-  .excel-table th, .excel-table td { border:1px solid #000!important; }
+  .program-table-wrap{overflow:visible!important;width:100%!important}.excel-table{table-layout:fixed!important;width:100%!important;min-width:0!important;font-size:8pt!important}.excel-table th,.excel-table td{white-space:normal!important;overflow-wrap:anywhere!important;padding:2mm!important;border:1px solid #000!important;min-width:0!important}.excel-table tr{break-inside:avoid}.excel-table thead{display:table-header-group}.excel-table th:first-child,.excel-table td:first-child{width:20mm!important;position:static!important}
 }
 `;
 
 // ─── CONFIRM MODAL ────────────────────────────────────────────────────────────
 const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel, isDanger = false, confirmText = "Onayla", dark }) => {
+  useEffect(()=>{if(!isOpen)return;const close=e=>{if(e.key==='Escape'){e.preventDefault();onCancel?.();}};window.addEventListener('keydown',close);return()=>window.removeEventListener('keydown',close);},[isOpen,onCancel]);
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-fadeIn">
+    <div role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-fadeIn">
       <div className={`rounded-2xl shadow-2xl max-w-sm w-full p-6 border animate-scaleIn dk-card dk-border`}>
         <div className="flex items-center gap-3 mb-3">
           <div className={`p-2.5 rounded-xl ${isDanger ? 'bg-red-50 text-red-500' : 'bg-indigo-50 text-indigo-600'}`}>
@@ -343,7 +343,7 @@ const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel, isDanger = 
         </div>
         <p className="text-sm dk-text-muted mb-6 leading-relaxed">{message}</p>
         <div className="flex justify-end gap-2">
-          <button onClick={onCancel} className="px-4 py-2 rounded-xl text-sm font-600 bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">İptal</button>
+          <button autoFocus onClick={onCancel} className="px-4 py-2 rounded-xl text-sm font-600 bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">İptal</button>
           <button onClick={onConfirm} className={`px-4 py-2 rounded-xl text-sm font-700 text-white transition-all active:scale-95 ${isDanger ? 'bg-red-500 hover:bg-red-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}>{confirmText}</button>
         </div>
       </div>
@@ -389,7 +389,7 @@ const Saat = ({ dark }) => {
 
 // ─── SIDEBAR ITEM ─────────────────────────────────────────────────────────────
 const SidebarItem = ({ id, icon, label, active, onClick, dark }) => (
-  <button onClick={() => onClick(id)}
+  <button aria-current={active===id?'page':undefined} onClick={() => onClick(id)}
     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-600 transition-all duration-200
       ${active === id
         ? dark ? 'bg-indigo-900/50 text-indigo-300' : 'bg-white text-indigo-700 shadow-sm'
@@ -429,19 +429,21 @@ const JarvisBrain = ({ active }) => {
 const CHIPS = [
   'Programı doldur',
   'Boş kalan yerleri doldur',
-  'Zorunlular kalsın, gerisini sil',
+  'Programı kontrol et',
   'Standart saat şablonunu yükle',
 ];
 
-function BalkizAIChat({ appState, onApply, onImport, warnings = [], dark }) {
+function BalkizAIChat({ appState, onApply, onImport, warnings = [], dark, sessionId }) {
+  const DB_KEYS=sessionKeys(sessionId);
   const INITIAL = [{ role:'assistant', content:'Merhaba! Ben B.A.L.K.I.Z. 🧠\nNe istediğinizi normal Türkçe yazın — gerisini ben hallederim.\n\n• "3. ders 4-A\'ya Kimya koy, Mehmet anlatsın"\n• "Ayşe\'yi ekle, origami ve drama yapabilir"\n• "boş kalan yerleri doldur"\n\nExcel/CSV dosyasını buraya sürükleyin ya da tabloyu doğrudan yapıştırın — türünü kendim anlarım.' }];
   const [messages, setMessages] = useState(() => db.load(DB_KEYS.CHAT_HISTORY, INITIAL));
   const [input, setInput]       = useState('');
   const [loading, setLoading]   = useState(false);
-  const [isOpen, setIsOpen]     = useState(true);
+  const [isOpen, setIsOpen]     = useState(false);
   const [dropping, setDropping] = useState(false);
   const endRef   = useRef(null);
   const abortRef = useRef(null);
+  const latestState=useRef(appState); latestState.current=appState;
 
   useEffect(() => { db.save(DB_KEYS.CHAT_HISTORY, messages.slice(-40)); }, [messages]);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior:'smooth', block:'nearest' }); }, [messages, loading]);
@@ -462,13 +464,14 @@ function BalkizAIChat({ appState, onApply, onImport, warnings = [], dark }) {
       const { message, actions } = await askBalkiz({
         text, history, state: appState, warnings, signal: abortRef.current.signal,
       });
-      let log = [];
+      if(actions.length && latestState.current!==appState)throw new Error('İstek sürerken program değişti. Son düzenlemeleri korudum; isteğini yeniden gönderebilirsin.');
+      let log = []; let finalState=appState;
       if (actions.length) {
         const r = applyActions(appState, actions);
-        log = r.log;
+        log = r.log; finalState=r.state;
         onApply(r.state);
       }
-      push({ role:'assistant', content: message + (log.length ? '\n' + log.map(l => '  ' + l).join('\n') : '') });
+      push({ role:'assistant', content: actions.length ? 'Uygulama sonucu:\n'+(log.length?log.join('\n'):'Uygulanabilir değişiklik bulunamadı; program korundu.')+'\n'+planSummary(finalState) : message });
     } catch (err) {
       if (err.name === 'AbortError') return;
       const keyErr = /API_KEY|401|tanımlı değil/i.test(err.message || '');
@@ -518,13 +521,13 @@ function BalkizAIChat({ appState, onApply, onImport, warnings = [], dark }) {
         <div style={{ position:'relative', overflow:'hidden', padding:'12px 18px', borderBottom:`1px solid ${dark?'rgba(255,255,255,.08)':'rgba(255,255,255,.4)'}`, background:'linear-gradient(135deg,rgba(99,102,241,.06) 0%,rgba(139,92,246,.04) 50%,rgba(6,182,212,.06) 100%)' }}>
           <div className="liquid-shimmer" style={{ position:'absolute', inset:0, pointerEvents:'none' }}/>
           <div style={{ position:'relative', zIndex:1, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+            <button type="button" onClick={()=>setIsOpen(v=>!v)} aria-expanded={isOpen} style={{ display:'flex', alignItems:'center', gap:12,background:'transparent',border:'none',cursor:'pointer',textAlign:'left' }}>
               <JarvisBrain active={loading}/>
               <div>
                 <div style={{ fontSize:14, fontWeight:700, color: dark?'#e2e8f0':'#334155', letterSpacing:'-.01em' }}>B.A.L.K.I.Z.</div>
                 <div style={{ fontSize:10, fontWeight:500, textTransform:'uppercase', letterSpacing:'.08em', marginTop:1 }}>{statusLabel}</div>
               </div>
-            </div>
+            </button>
             <div style={{ display:'flex', alignItems:'center', gap:6 }}>
               {warnings.length > 0 && !isOpen && (
                 <span style={{ background:'#fef3c7', color:'#b45309', fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:99 }}>{warnings.length}</span>
@@ -535,7 +538,7 @@ function BalkizAIChat({ appState, onApply, onImport, warnings = [], dark }) {
               </button>
               <button onClick={()=>setIsOpen(v=>!v)} title={isOpen?'Küçült':'Aç'}
                 style={{ padding:6, borderRadius:8, border:'none', background:'transparent', color:'#94a3b8', cursor:'pointer', display:'flex' }}>
-                {isOpen?<ChevronUp size={14}/>:<ChevronDown size={14}/>}
+                <span style={{fontSize:12,fontWeight:700,marginRight:5}}>{isOpen?'Kapat':'Balkız’a sor'}</span>{isOpen?<ChevronUp size={14}/>:<ChevronDown size={14}/>}
               </button>
             </div>
           </div>
@@ -625,7 +628,7 @@ function BalkizAIChat({ appState, onApply, onImport, warnings = [], dark }) {
 
 // ─── NAV BUTTON ───────────────────────────────────────────────────────────────
 const NavBtn = ({ active, onClick, icon, label, dark }) => (
-  <button onClick={onClick}
+  <button aria-current={active?'step':undefined} onClick={onClick}
     className={`px-3 py-2 rounded-xl text-sm font-600 flex gap-2 items-center transition-all duration-200 no-print
       ${active
         ? 'bg-indigo-600 text-white shadow-sm'
@@ -636,7 +639,9 @@ const NavBtn = ({ active, onClick, icon, label, dark }) => (
 );
 
 // ─── MODULE 1: INFINITY SCHEDULER ────────────────────────────────────────────
-function InfinityScheduler({ onNotify, dark }) {
+function InfinityScheduler({ onNotify, dark, sessionId, sessions, dataVersion }) {
+  const DB_KEYS=useMemo(()=>sessionKeys(sessionId),[sessionId]);
+  const syncVolunteers=useCallback(src=>syncSessionRoster(sessionId,src),[sessionId]);
   const [activeView, setActiveView] = useState('view');
   const [confirmModal, setConfirmModal] = useState({ isOpen: false });
 
@@ -650,8 +655,18 @@ function InfinityScheduler({ onNotify, dark }) {
   const [autoGenStep,    setAutoGenStep]    = useState('');
   const [editingSlot,    setEditingSlot]    = useState(null);
   const [bulkModalOpen,  setBulkModalOpen]  = useState(false);
+  const [participants,setParticipants]=useState(()=>db.load(DB_KEYS.PARTICIPANTS,null));
+  const programVolunteers=volunteers.filter(v=>!participants||participants.includes(v.id));
+  useEffect(()=>{db.save(DB_KEYS.PARTICIPANTS,participants);},[participants]);
+  const [volunteerQuery,setVolunteerQuery]=useState('');
   const [bulkText,       setBulkText]       = useState('');
+  const [importPreview,setImportPreview] = useState(null);
+  const [undoState,setUndoState] = useState(null);
   const [quickSlot,      setQuickSlot]      = useState(null); // { clsId, slotId }
+
+  useEffect(()=>{const close=e=>{if(e.key!=='Escape')return;if(importPreview){setImportPreview(null);e.preventDefault();}else if(bulkModalOpen){setBulkModalOpen(false);e.preventDefault();}else if(editingSlot){setEditingSlot(null);e.preventDefault();}};window.addEventListener('keydown',close);return()=>window.removeEventListener('keydown',close);},[importPreview,bulkModalOpen,editingSlot]);
+
+  const openView=view=>{setActiveView(view);requestAnimationFrame(()=>document.querySelector('.workflow-panel')?.scrollIntoView({block:'start',behavior:'auto'}));};
 
   const dragItem    = useRef();
   const fileInputRef= useRef(null);
@@ -661,68 +676,82 @@ function InfinityScheduler({ onNotify, dark }) {
   useEffect(() => { db.save(DB_KEYS.TIMESLOTS,  timeSlots);  }, [timeSlots]);
   useEffect(() => { db.save(DB_KEYS.CLASSES,    classes);    }, [classes]);
 
+  useEffect(()=>{const refresh=e=>{const setters={[DB_KEYS.ACTIVITIES]:[setActivities,[]],[DB_KEYS.VOLUNTEERS]:[setVolunteers,[]],[DB_KEYS.TIMESLOTS]:[setTimeSlots,[]],[DB_KEYS.CLASSES]:[setClasses,[]],[DB_KEYS.PARTICIPANTS]:[setParticipants,null]};const entry=setters[e.key];if(entry)entry[0](db.load(e.key,entry[1]));};window.addEventListener('storage',refresh);return()=>window.removeEventListener('storage',refresh);},[DB_KEYS]);
+
   // ── ÇAKIŞMALAR (useMemo: her render'da değil, yalnızca veri değişince) ────
   const warnings = useMemo(
-    () => calculateConflicts({ activities, volunteers, timeSlots, classes }),
-    [activities, volunteers, timeSlots, classes]
+    () => calculateConflicts({ activities, volunteers:programVolunteers, timeSlots, classes,reservations:sessionReservations(sessionId,sessions) }),
+    [activities, volunteers, timeSlots, classes,participants,sessionId,sessions,dataVersion]
   );
 
   const appState = useMemo(
-    () => ({ activities, volunteers, timeSlots, classes }),
-    [activities, volunteers, timeSlots, classes]
+    () => ({ activities, volunteers:programVolunteers, timeSlots, classes,reservations:sessionReservations(sessionId,sessions) }),
+    [activities, volunteers, timeSlots, classes,participants,sessionId,sessions,dataVersion]
   );
+
+  const latestPlan=useRef(appState);latestPlan.current=appState;
+  useEffect(()=>()=>{latestPlan.current=null;},[]);
+  const otherTeamWarnings=useMemo(()=>crossSessionConflicts(sessionId,appState,sessions),[sessionId,appState,sessions,dataVersion]);
 
   /** AI / içe aktarım sonucunu tek noktadan uygular. */
   const applyState = useCallback((next) => {
+    if (next.timeSlots) { const errors = validateTimeSlots(next.timeSlots); if(errors.length) throw new Error(errors.join(' ')); next = {...next, timeSlots:canonicalSlots(next.timeSlots)}; }
+    setUndoState({activities,volunteers,timeSlots,classes});
+    db.save('prokordi_before_change',{activities,volunteers,timeSlots,classes},0);
+    if(next.extras){const ex=next.extras;for(const [key,value] of [[DB_KEYS.NAMETAG_VOLUNTEERS,ex.nametags],[DB_KEYS.COLLAGE_VOLUNTEERS,ex.collage],['prokordi_packing_5days_v2',ex.checklist],['prokordi_fold_badge_v1',ex.nameLayout],['prokordi_collage_title_v2',ex.collageTitle],['prokordi_collage_address_v2',ex.collageAddress]])if(value)db.save(key,value);}
     if (next.activities) setActivities(next.activities);
-    if (next.volunteers) { setVolunteers(next.volunteers); syncVolunteers(next.volunteers); }
+    if (next.volunteers) { const incoming=new Set(next.volunteers.map(v=>v.id));const keep=participants?volunteers.filter(v=>!participants.includes(v.id)&&!incoming.has(v.id)):[];const combined=[...keep,...next.volunteers];setVolunteers(combined);syncVolunteers(combined);if(participants)setParticipants(prev=>[...new Set([...prev.filter(id=>combined.some(v=>v.id===id)),...next.volunteers.filter(v=>!volunteers.some(old=>old.id===v.id)).map(v=>v.id)])]); }
     if (next.timeSlots)  setTimeSlots(next.timeSlots);
     if (next.classes)    { setClasses(next.classes); setHasDistributed(true); }
-  }, []);
+  }, [activities,volunteers,timeSlots,classes,participants]);
 
   /** Dosya (xlsx/csv/txt) ya da yapıştırılan metin — türünü importer kendi bulur. */
   const handleImport = useCallback(async (input) => {
     const rows = typeof input === 'string' ? input : await readFile(input);
     const patch = toStatePatch(parseAny(rows), { activities, volunteers, timeSlots, classes });
-    applyState(patch);
-    onNotify(`İçe aktarıldı — ${patch._kind}: ${patch._summary}`);
-    return `${patch._kind}: ${patch._summary}`;
+    if(patch.timeSlots){const errors=validateTimeSlots(patch.timeSlots);if(errors.length)throw new Error(errors.join(' '));}
+    setImportPreview(patch);
+    return `${patch._kind}: ${patch._summary}. Önizleme hazır; İçe aktar düğmesiyle uygulayın.`;
   }, [activities, volunteers, timeSlots, classes, applyState, onNotify]);
 
   // ── DAĞITIM ──────────────────────────────────────────────────────────────
   const distributePerfectly = useCallback((onlyEmpty = false) => {
+    const errors = validateTimeSlots(timeSlots); if(errors.length){onNotify(errors.join(' '));return;}
     const lessonSlots = timeSlots.filter(t => t.type === 'lesson');
     if (!lessonSlots.length || !classes.length || !activities.length) {
-      onNotify('Önce etkinlik, sınıf ve zaman dilimi ekleyin!'); return;
+      setActiveView('setup');onNotify('Sınıfları tıklayarak seçin ve günü oluşturup kaydedin.'); return;
     }
-    if (!volunteers.length) { onNotify('⚠️ Gönüllü yok — Gönüllüler sekmesinden ekleyin.'); return; }
+    if (!programVolunteers.length) { setActiveView('volunteers');onNotify('Bu okulda görevli gönüllü seçin veya yeni gönüllü ekleyin.'); return; }
+    if(!activities.some(a=>a.cat!=='presentation'&&a.planningReady!==false&&a.boxCount>0&&classes.some(c=>!a.allowedGrades?.length||a.allowedGrades.includes(Number(c.name.match(/\d+/)?.[0]))))){setActiveView('activities');onNotify('Uygun düzeyleri seçip en az bir etkinliği programa dahil edin.');return;}
     setAiState('processing');
     // ağır işi bir sonraki frame'e bırak ki buton anında tepki versin
     requestAnimationFrame(() => {
-      const next = distribute({ activities, volunteers, timeSlots, classes }, { onlyEmpty: !!onlyEmpty });
+      if(latestPlan.current!==appState){setAiState('idle');onNotify('Program veya başka bir ekip değişti; son düzenlemeleri korudum. Dağıtımı yeniden başlatın.');return;}
+      const next = distribute({ activities, volunteers:programVolunteers, timeSlots, classes }, { onlyEmpty: !!onlyEmpty,reservations:sessionReservations(sessionId,sessions) });
       const filled = next.reduce((n, c) => n + lessonSlots.filter(sl => c.schedule[sl.id]).length, 0);
-      setClasses(next); setHasDistributed(true); setAiState('idle');
-      onNotify(`Dağıtım tamam — ${filled}/${classes.length * lessonSlots.length} slot dolu.`);
+      setUndoState({activities,volunteers,timeSlots,classes}); setClasses(next); setHasDistributed(true); setAiState('idle');
+      onNotify(planSummary({...appState,classes:next}));
     });
-  }, [activities, volunteers, timeSlots, classes, onNotify]);
+  }, [activities, volunteers, timeSlots, classes, participants,onNotify,sessionId,sessions]);
 
   // ── EXCEL EXPORT ─────────────────────────────────────────────────────────
   const exportToExcelCSV = () => {
     if (!classes.length || !timeSlots.length) { onNotify("Dışa aktarılacak program yok!"); return; }
     const sep = ';';
+    const quote=value=>'\"'+String(value??'').replace(/\"/g,'\"\"')+'\"';
     let csv = '\uFEFF';
-    csv += `"SAAT / SINIF"${sep}` + classes.map(c=>`"${c.name}"`).join(sep) + '\n';
+    csv += `"SAAT / SINIF"${sep}` + classes.map(c=>quote(c.name)).join(sep) + '\n';
     timeSlots.forEach(slot => {
       let row = `"${slot.start} - ${slot.end}"`;
       if (slot.type !== 'lesson') {
-        const lbl = slot.type==='break'?'TENEFFÜS':slot.type==='lunch'?'ÖĞLE ARASI':'MOLA';
-        row += sep + classes.map(()=>`"${lbl}"`).join(sep);
+        const lbl = slot.type==='break'?'TENEFFÜS':slot.type==='lunch'?'ÖĞLE ARASI':`TOPLU SUNUM: ${slot.title||'Açılış sunumu'}`;
+        row += sep + classes.map(()=>quote(lbl)).join(sep);
       } else {
         row += sep + classes.map(c => {
           const cell = (c.schedule||{})[slot.id];
           if (!cell) return '""';
           if (cell.activityId==='NO_CLASS') return '"DERS YOK"';
-          return `"${cell.name} (${cell.lead})"`;
+          return quote(`${cell.name} (${cell.lead})`);
         }).join(sep);
       }
       csv += row + '\n';
@@ -736,7 +765,7 @@ function InfinityScheduler({ onNotify, dark }) {
   };
 
   const exportBackupJSON = () => {
-    const blob = new Blob([JSON.stringify({activities,volunteers,timeSlots,classes},null,2)],{type:'application/json'});
+    const blob = new Blob([JSON.stringify({activities,volunteers,timeSlots,classes,extras:{nametags:db.load(DB_KEYS.NAMETAG_VOLUNTEERS,[]),collage:db.load(DB_KEYS.COLLAGE_VOLUNTEERS,[]),checklist:db.load('prokordi_packing_5days_v2',[]),nameLayout:db.load('prokordi_fold_badge_v1',{}),collageTitle:db.load('prokordi_collage_title_v2','İLKYAR PROJESİ EKİBİ'),collageAddress:db.load('prokordi_collage_address_v2','')}},null,2)],{type:'application/json'});
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href=url; a.download=`ProkordiManager_Yedek_${new Date().toISOString().slice(0,10)}.json`;
@@ -744,35 +773,21 @@ function InfinityScheduler({ onNotify, dark }) {
     onNotify("Yedek indirildi!");
   };
 
-  const handleImportBackup = e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      try {
-        const d = JSON.parse(ev.target.result);
-        if (d.classes && d.timeSlots) {
-          setConfirmModal({
-            isOpen:true, isDanger:true, title:'Yedeği Yükle',
-            message:'Mevcut tüm veri silinip yedek yüklenecek. Emin misiniz?',
-            onConfirm:() => {
-              if (d.classes)    setClasses(d.classes);
-              if (d.timeSlots)  setTimeSlots(d.timeSlots);
-              if (d.activities) setActivities(d.activities);
-              if (d.volunteers) { setVolunteers(d.volunteers); syncVolunteers(d.volunteers); }
-              setHasDistributed(false); setConfirmModal({isOpen:false}); onNotify("Yedek yüklendi!");
-            },
-            onCancel:()=>setConfirmModal({isOpen:false})
-          });
-        }
-      } catch { onNotify("Geçersiz dosya!"); }
-    };
-    reader.readAsText(file);
-    if (fileInputRef.current) fileInputRef.current.value = '';
+  const handleImportBackup = async e => {
+    const file=e.target.files?.[0];if(!file)return;
+    try{
+      const d=JSON.parse(await file.text());
+      if(!Array.isArray(d.classes)||!Array.isArray(d.timeSlots)||!Array.isArray(d.activities)||!Array.isArray(d.volunteers))throw new Error('Geçerli program yedeği seçin.');
+      const issues=validateTimeSlots(d.timeSlots);if(issues.length)throw new Error(issues.join(' '));
+      if(!d.classes.every(c=>c.id&&c.name&&c.schedule&&typeof c.schedule==='object'))throw new Error('Yedekteki sınıf yapısı geçersiz.');
+      if(!d.volunteers.every(v=>v&&typeof v.id==='string'&&typeof v.name==='string'&&Array.isArray(v.capabilities)))throw new Error('Gönüllü kayıtları ve yetkinlik listeleri geçersiz.');
+      if(!d.activities.every(a=>a&&typeof a.id==='string'&&typeof a.name==='string'&&(!a.allowedGrades||Array.isArray(a.allowedGrades))))throw new Error('Etkinlik kayıtları geçersiz.');
+      if(d.extras)for(const key of ['nametags','collage','checklist'])if(d.extras[key]&&!Array.isArray(d.extras[key]))throw new Error('Yedekteki ek liste yapısı geçersiz.');
+      setImportPreview({...d,_kind:'JSON yedek',_summary:`${d.classes.length} sınıf, ${d.timeSlots.length} saat. Yedek uygulanacak; önceki program geri alınabilir.`});
+    }catch(err){onNotify(err.message);}finally{e.target.value='';}
   };
 
-  // ── DRAG & DROP ─────────────────────────────────────────────────────────
-  const handleDragStart = (e, clsId, slotId, data) => { if (data && !data.isLocked) dragItem.current = {clsId,slotId,data}; };
+  const handleDragStart=(event,clsId,slotId,cell)=>{if(cell.isLocked||cell.activityId==='NO_CLASS'){event.preventDefault();return;}dragItem.current={clsId,slotId};};
   const handleDrop = (e, targetClsId, targetSlotId) => {
     e.preventDefault();
     const src = dragItem.current;
@@ -781,6 +796,8 @@ function InfinityScheduler({ onNotify, dark }) {
     const copy = JSON.parse(JSON.stringify(classes));
     const sC = copy.find(c=>c.id===src.clsId);
     const tC = copy.find(c=>c.id===targetClsId);
+    if(!sC||!tC||!sC.schedule[src.slotId])return;
+    setUndoState({activities,volunteers,timeSlots,classes});
     if (tC.schedule[targetSlotId]?.isLocked || sC.schedule[src.slotId]?.isLocked) { onNotify("Kilitli alanlar taşınamaz!"); return; }
     const sD = sC.schedule[src.slotId];
     const tD = tC.schedule[targetSlotId];
@@ -797,14 +814,14 @@ function InfinityScheduler({ onNotify, dark }) {
 
   const saveSlotEdit = () => {
     if (!editingSlot) return;
+    setUndoState({activities,volunteers,timeSlots,classes});
     let { activityId, name:actName, leadId } = editingSlot.data;
     if (actName && !activities.find(a=>a.id===activityId) && activityId!=='delete' && activityId!=='NO_CLASS') {
-      const newAct = { id:uuid(), name:actName, cat:'science', isMust:false, boxCount:20, allowedGrades:[] };
+      const newAct = { id:uuid(), name:actName, cat:'science', isMust:false, boxCount:1, allowedGrades:[],planningReady:false };
       activityId = newAct.id;
       setActivities(prev=>[...prev,newAct]);
       onNotify(`"${actName}" yeni etkinlik olarak eklendi.`);
-      if (leadId && leadId !== 'none')
-        setVolunteers(prev=>prev.map(v=>v.id===leadId&&!v.capabilities.includes(newAct.id)?{...v,capabilities:[...v.capabilities,newAct.id]}:v));
+
     }
     setClasses(prev=>prev.map(c=>{
       if (c.id!==editingSlot.clsId) return c;
@@ -832,53 +849,6 @@ function InfinityScheduler({ onNotify, dark }) {
 
   // ── OTOMATİK PROGRAM OLUŞTUR ─────────────────────────────────────────────
   // Eksik ne varsa makul varsayılanı koyar, sonra tek geçişte dağıtır.
-  const DEFAULT_CLASSES = ['Ana Sınıfı','1-A','1-B','2-A','2-B','3-A','3-B','4-A','4-B'];
-  const DEFAULT_ACTS = [
-    { name:'Origami',          isMust:false, boxCount:10, allowedGrades:[0,1,2,3,4] },
-    { name:'Yaratıcı Drama',   isMust:true,  boxCount:8,  allowedGrades:[] },
-    { name:'Resim',            isMust:false, boxCount:12, allowedGrades:[] },
-    { name:'Müzik',            isMust:true,  boxCount:8,  allowedGrades:[] },
-    { name:'Yüz Boyama',       isMust:false, boxCount:6,  allowedGrades:[0,1,2,3,4] },
-    { name:'Kimya Deneyleri',  isMust:false, boxCount:4,  allowedGrades:[4,5,6,7,8] },
-    { name:'Fizik Deneyleri',  isMust:false, boxCount:4,  allowedGrades:[5,6,7,8] },
-    { name:'Robotik',          isMust:false, boxCount:3,  allowedGrades:[5,6,7,8] },
-    { name:'Masa Deneyleri',   isMust:false, boxCount:6,  allowedGrades:[4,5,6,7,8] },
-    { name:'Pino Mino',        isMust:false, boxCount:5,  allowedGrades:[0,1,2,3,4] },
-  ];
-  const TEMPLATE_SLOTS = [
-    ['09:00','09:40','lesson'],['09:40','09:55','break'],['09:55','10:35','lesson'],
-    ['10:35','10:50','break'], ['10:50','11:30','lesson'],['11:30','12:30','lunch'],
-    ['12:30','13:10','lesson'],['13:10','13:25','break'],['13:25','14:05','lesson'],
-  ];
-  const makeTemplate = () => TEMPLATE_SLOTS.map(([start,end,type]) => ({ id:uuid(), start, end, type }));
-
-  const autoGenerateProgram = useCallback(() => {
-    if (aiState === 'processing') return;
-    setAiState('processing'); setAutoGenStep('Hazırlanıyor…');
-
-    const nextClasses    = classes.length   ? classes    : DEFAULT_CLASSES.map(n => ({ id:uuid(), name:n, schedule:{} }));
-    const nextActivities = activities.length ? activities : DEFAULT_ACTS.map(d => ({ id:uuid(), cat:'science', ...d }));
-    const nextSlots      = timeSlots.length ? timeSlots  : makeTemplate();
-
-    if (!volunteers.length) {
-      setActivities(nextActivities); setTimeSlots(nextSlots); setClasses(nextClasses);
-      setAiState('idle'); setAutoGenStep('');
-      onNotify('⚠️ Gönüllü eklenmemiş — iskelet kuruldu, Gönüllüler sekmesinden kişileri ekleyin.');
-      return;
-    }
-
-    setAutoGenStep('Dağıtılıyor…');
-    requestAnimationFrame(() => {
-      const state = { activities:nextActivities, volunteers, timeSlots:nextSlots, classes:nextClasses };
-      const result = distribute(state);
-      const lessons = nextSlots.filter(t => t.type === 'lesson');
-      const filled = result.reduce((n, c) => n + lessons.filter(sl => c.schedule[sl.id]).length, 0);
-      setActivities(nextActivities); setTimeSlots(nextSlots); setClasses(result);
-      setHasDistributed(true); setAiState('idle'); setAutoGenStep('');
-      onNotify(`✨ Program hazır — ${filled}/${nextClasses.length * lessons.length} slot dolduruldu.`);
-    });
-  }, [aiState, classes, activities, timeSlots, volunteers, onNotify]);
-
   // ── RENDER ───────────────────────────────────────────────────────────────
   const cardCls = `rounded-2xl border shadow-sm p-4 animate-fadeIn dk-card dk-border`;
   const inputCls = `border rounded-xl px-4 py-2.5 text-sm font-500 flex-1 outline-none transition-colors dk-input dk-border`;
@@ -893,56 +863,30 @@ function InfinityScheduler({ onNotify, dark }) {
       `}</style>
       <ConfirmModal {...confirmModal} dark={dark}/>
 
-      {/* Sub-nav */}
-      <div className={`rounded-2xl border shadow-sm p-3 no-print flex flex-wrap gap-2 items-center dk-card dk-border`}>
-        <NavBtn dark={dark} active={activeView==='view'}       onClick={()=>setActiveView('view')}       icon={<Calendar size={15}/>}      label="Program"/>
-        <NavBtn dark={dark} active={activeView==='setup'}      onClick={()=>setActiveView('setup')}      icon={<BookOpen size={15}/>}      label="Sınıf & Zaman"/>
-        <NavBtn dark={dark} active={activeView==='activities'} onClick={()=>setActiveView('activities')} icon={<Package size={15}/>}       label="Etkinlikler"/>
-        <NavBtn dark={dark} active={activeView==='volunteers'} onClick={()=>setActiveView('volunteers')} icon={<GraduationCap size={15}/>}  label="Gönüllüler"/>
-        <div className="flex-1"/>
-        {activeView === 'view' && (
-          <div className="flex gap-2 flex-wrap">
-            <button onClick={exportToExcelCSV} className="flex items-center gap-1.5 px-3 py-2 text-xs font-600 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors">
-              <Download size={13}/> Excel
-            </button>
-            <button onClick={exportBackupJSON} className="flex items-center gap-1.5 px-3 py-2 text-xs font-600 text-slate-600 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors">
-              <Download size={13}/> Yedek
-            </button>
-            <label className="flex items-center gap-1.5 px-3 py-2 text-xs font-600 text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors cursor-pointer">
-              <UploadCloud size={13}/> Yedek Yükle
-              <input type="file" accept=".json" className="hidden" ref={fileInputRef} onChange={handleImportBackup}/>
-            </label>
-            <label className="flex items-center gap-1.5 px-3 py-2 text-xs font-600 text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors cursor-pointer"
-              title="Excel/CSV: program tablosu, gönüllü listesi, etkinlik kataloğu ya da sınıf listesi — türü otomatik anlaşılır">
-              <FileSpreadsheet size={13}/> Excel / CSV İçe Aktar
-              <input type="file" accept=".xlsx,.xlsm,.csv,.txt,.tsv" className="hidden"
-                onChange={e=>{ const f=e.target.files?.[0]; e.target.value=''; if(f) handleImport(f).catch(err=>onNotify(`⚠️ ${err.message}`)); }}/>
-            </label>
-          </div>
-        )}
-      </div>
+      {importPreview && <div role="dialog" aria-modal="true" aria-label="İçe aktarma önizlemesi" className="fixed inset-0 z-[9999] bg-black/50 p-4 flex items-center justify-center"><div className="dk-card dk-border border rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-auto"><h3 className="font-700 text-lg dk-text">İçe aktarma önizlemesi</h3><p className="text-sm dk-text my-3">{importPreview._kind}: {importPreview._summary}</p><p className="text-sm dk-text-muted mb-3">Program tablosu aynı sınıf ve saatteki hücreyi günceller. Diğer kayıtlar korunur. Uygulamadan önce mevcut durum yerel yedeğe alınır.</p><pre className="dk-card-inner dk-text p-3 rounded-xl overflow-auto text-xs max-h-64">{JSON.stringify({saatler:importPreview.timeSlots?.map(s=>`${s.start}–${s.end}`),siniflar:importPreview.classes?.map(c=>c.name),gonulluler:importPreview.volunteers?.map(v=>v.name),etkinlikler:importPreview.activities?.map(a=>a.name)},null,2)}</pre><div className="flex gap-3 mt-4"><button className="bg-indigo-600 text-white rounded-xl p-3" onClick={()=>{applyState(importPreview);setImportPreview(null);onNotify('İçe aktarıldı. Son değişikliği geri alabilirsiniz.');}}>İçe aktar</button><button className="dk-text" onClick={()=>setImportPreview(null)}>Vazgeç</button></div></div></div>}
+      <section className="workflow-panel ui-controls rounded-2xl border no-print dk-card dk-border" aria-label="Program hazırlama adımları">
+        <div className="workflow-heading"><h3>Programı 4 adımda hazırla</h3><p>İstediğin adıma geri dönebilirsin.</p></div>
+        <nav className="workflow-steps" aria-label="Program adımları">{[['volunteers','1 · Gönüllüler',Users],['activities','2 · Etkinlikler',Package],['setup','3 · Sınıf ve saat',BookOpen],['view','4 · Program',Calendar]].map(([id,label,Icon])=><NavBtn key={id} dark={dark} active={activeView===id} onClick={()=>openView(id)} icon={<Icon size={17}/>} label={label}/>)}</nav>
+        <div className="workflow-files">
+          <div className="file-group"><span className="file-group-title">İçe aktar</span><button className="ui-tool" onClick={()=>setBulkModalOpen(true)}><UploadCloud size={15}/>Liste / tablo yapıştır</button><label role="button" tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.currentTarget.querySelector('input')?.click();}}} className="ui-tool" style={{cursor:'pointer'}}><FileSpreadsheet size={15}/>Excel / CSV İçe Aktar<input type="file" accept=".xlsx,.xlsm,.csv,.txt,.tsv" className="hidden" onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)handleImport(f).catch(err=>onNotify(err.message));}}/></label><label role="button" tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.currentTarget.querySelector('input')?.click();}}} className="ui-tool" style={{cursor:'pointer'}}><UploadCloud size={15}/>Yedek Yükle<input type="file" accept=".json" className="hidden" ref={fileInputRef} onChange={handleImportBackup}/></label></div>
+          <div className="file-group"><span className="file-group-title">Dışa aktar</span><button onClick={exportToExcelCSV} className="ui-tool"><Download size={15}/>Excel indir</button><button onClick={exportBackupJSON} className="ui-tool"><Download size={15}/>Yedek indir</button></div>
+          {undoState&&<div className="file-group"><span className="file-group-title">Son işlem</span><button className="ui-tool" onClick={()=>{const restore=undoState;setActivities(restore.activities);setVolunteers(restore.volunteers);setTimeSlots(restore.timeSlots);setClasses(restore.classes);setUndoState(null);onNotify('Son değişiklik geri alındı.');}}>Son değişikliği geri al</button></div>}
+        </div>
+      </section>
 
+      {activeView!=='view'&&<div className="workflow-next ui-controls no-print flex flex-wrap justify-between items-center gap-3 rounded-xl dk-card dk-border border p-3"><p className="dk-text-muted text-sm">{programVolunteers.length} görevli · {classes.length} sınıf · {timeSlots.filter(t=>t.type==='lesson').length} etkinlik saati</p><button className="text-indigo-600 font-700 text-sm p-2" onClick={()=>openView(activeView==='volunteers'?'activities':activeView==='activities'?'setup':'view')}>Sonraki: {activeView==='volunteers'?'Etkinlikleri seç':activeView==='activities'?'Sınıf ve saatleri seç':'Programı oluştur'} →</button></div>}
       {/* ── VIEW: Program ── */}
       {activeView === 'view' && (
         <>
-          {/* AI Chat */}
-          <BalkizAIChat appState={appState} onApply={applyState} onImport={handleImport} warnings={warnings} dark={dark}/>
 
           {/* Action bar */}
-          <div className={`no-print flex flex-wrap gap-2 items-center rounded-2xl border p-3 shadow-sm dk-card dk-border`}>
-            {/* Otomatik Oluştur */}
-            <button onClick={autoGenerateProgram} disabled={aiState==='processing'||!!autoGenStep}
-              title="Tüm verilerle program oluştur — AI prompt gerekmez"
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-700 text-white shadow-sm transition-all active:scale-95 disabled:opacity-60"
-              style={{ background:autoGenStep?'linear-gradient(135deg,#f59e0b,#f97316)':'linear-gradient(135deg,#10b981,#059669)', boxShadow:autoGenStep?'0 2px 12px rgba(245,158,11,.35)':'0 2px 12px rgba(16,185,129,.35)' }}>
-              {autoGenStep ? <><RefreshCw size={15} style={{animation:'spinSlow .8s linear infinite'}}/>{autoGenStep}</> : <><Zap size={15}/> Otomatik Program Oluştur</>}
-            </button>
-
+          <div className={`plan-actions ui-controls no-print flex flex-wrap gap-2 items-center rounded-2xl border p-3 shadow-sm dk-card dk-border`}>
+<div className="plan-action-title"><h3>Programı oluştur</h3><p>Hazır etkinlikler ve görevli gönüllülerle dağıtım yap.</p></div>
             {/* B.A.L.K.I.Z. Dağıt */}
             <button onClick={()=>distributePerfectly(false)} disabled={aiState==='processing'||!!autoGenStep}
               title="Kilitli hücreler dışında her şeyi yeniden dağıtır"
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-700 text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 shadow-sm transition-all active:scale-95 disabled:opacity-60">
-              {aiState==='processing' ? <><RefreshCw size={15} className="animate-spin"/> İşleniyor…</> : <><Wand2 size={15}/> B.A.L.K.I.Z. Dağıtımı</>}
+              {aiState==='processing' ? <><RefreshCw size={15} className="animate-spin"/> İşleniyor…</> : <><Wand2 size={15}/> Programı dağıt / dengele</>}
             </button>
 
             {/* Sadece boşları doldur — mevcut atamalara dokunmaz */}
@@ -952,35 +896,25 @@ function InfinityScheduler({ onNotify, dark }) {
               <PlusCircle size={15}/> Boşları Doldur
             </button>
 
-            {/* Sıfırla seçenekleri */}
-            <div className="flex gap-2 ml-auto">
-              <button onClick={()=>setConfirmModal({isOpen:true,isDanger:true,title:'Zorunlu Olmayanları Sil',
-                message:'Zorunlu (must) olmayan tüm atamalar silinecek.',
-                onConfirm:()=>{setClasses(prev=>prev.map(c=>({...c,schedule:Object.fromEntries(Object.entries(c.schedule||{}).filter(([,s])=>s.isMust||s.activityId==='NO_CLASS'))}))); setConfirmModal({isOpen:false}); onNotify("Zorunlu olmayanlar silindi."); },
-                onCancel:()=>setConfirmModal({isOpen:false}),confirmText:'Sil'})}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-600 text-orange-500 bg-orange-50 border border-orange-100 hover:bg-orange-100 transition-colors">
-                <Star size={13}/> Sadece Zorunluları Bırak
-              </button>
-              <button onClick={()=>setConfirmModal({isOpen:true,isDanger:true,title:'Tüm Programı Sıfırla',
-                message:'Tüm sınıf programları tamamen silinecek.',
-                onConfirm:()=>{setClasses(prev=>prev.map(c=>({...c,schedule:{}}))); setHasDistributed(false); setConfirmModal({isOpen:false}); onNotify("Program sıfırlandı."); },
-                onCancel:()=>setConfirmModal({isOpen:false}),confirmText:'Sıfırla'})}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-600 text-red-500 bg-red-50 border border-red-100 hover:bg-red-100 transition-colors">
-                <Trash2 size={14}/> Tüm Programı Sıfırla
-              </button>
-            </div>
+
           </div>
 
+          {otherTeamWarnings.length>0&&<div role="alert" className="no-print bg-amber-50 text-amber-900 rounded-xl p-4 my-3 text-sm"><strong>Ekipler arası çakışma</strong>{otherTeamWarnings.map(w=><p key={w}>{w}</p>)}</div>}
+          {/* AI Chat */}
+          <BalkizAIChat sessionId={sessionId} appState={appState} onApply={applyState} onImport={handleImport} warnings={warnings} dark={dark}/>
+
+          <section className="dk-card dk-border border rounded-2xl p-4 my-4 no-print"><h3 className="font-700 dk-text">Program geri bildirimi</h3><p className="text-sm dk-text my-2">{planSummary(appState)}</p><details className="mt-3 text-sm dk-text"><summary className="cursor-pointer">Gönüllü dağılımını gör</summary><div className="flex flex-wrap gap-2 mt-2">{workload(appState).map(v=><span key={v.id} className="dk-card-inner dk-text text-xs p-2 rounded-lg">{v.name}: {v.lead} sorumlu · {v.support} yardımcı · {v.minutes} dk · {v.variety} farklı etkinlik</span>)}</div></details><details className="mt-3 text-sm dk-text"><summary className="cursor-pointer">Tüm uyarılar ({warnings.length})</summary><div className="max-h-64 overflow-auto space-y-2 mt-2">{warnings.map((w,i)=><p key={i}>{w.msg}</p>)}</div></details></section>
           {/* Schedule Table */}
-          <div className={`rounded-2xl border shadow-sm overflow-x-auto print:shadow-none print:border-none print:rounded-none dk-card dk-border`}>
+          <h2 className="print-only" style={{fontSize:18,fontWeight:800,marginBottom:12}}>{sessions.find(s=>s.id===sessionId)?.name}</h2>
+          <div className={`program-table-wrap rounded-2xl border shadow-sm overflow-x-auto print:shadow-none print:border-none print:rounded-none dk-card dk-border`}>
             {classes.length === 0 || timeSlots.length === 0 ? (
               <div className="p-12 text-center">
                 <Calendar size={40} className="mx-auto mb-4 text-slate-300"/>
                 <p className="text-sm font-600 dk-text-muted mb-2">Program Henüz Oluşturulmadı</p>
-                <p className="text-xs dk-text-muted mb-5">Sınıf & Zaman sekmesinden ayar yapın veya otomatik oluşturun.</p>
-                <button onClick={autoGenerateProgram} disabled={aiState==='processing'}
+                <p className="text-xs dk-text-muted mb-5">Önce sınıfları, başlangıç sunumunu ve günün saatlerini seçin.</p>
+                <button onClick={()=>setActiveView('setup')} disabled={aiState==='processing'}
                   className="mx-auto flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-700 text-white bg-gradient-to-r from-emerald-600 to-teal-600 shadow-sm hover:from-emerald-700 hover:to-teal-700 transition-all active:scale-95">
-                  <Zap size={16}/> Otomatik Program Oluştur
+                  <Zap size={16}/> Sınıfları ve günü hazırla
                 </button>
               </div>
             ) : (
@@ -993,12 +927,12 @@ function InfinityScheduler({ onNotify, dark }) {
                     {classes.map(c=>(
                       <th key={c.id} className="p-2 text-center relative group" style={{ borderBottom:'2px solid #475569', minWidth:120 }}>
                         <span className="text-sm font-700 dk-text">{c.name}</span>
-                        <button onClick={()=>setConfirmModal({isOpen:true,isDanger:true,title:`${c.name} Temizle`,
+                        <button aria-label={`${c.name} atamalarını temizle`} onClick={()=>setConfirmModal({isOpen:true,isDanger:true,title:`${c.name} Temizle`,
                           message:`${c.name} sınıfının tüm atamaları silinecek.`,
                           onConfirm:()=>{setClasses(prev=>prev.map(x=>x.id===c.id?{...x,schedule:{}}:x));setConfirmModal({isOpen:false});onNotify(`${c.name} temizlendi.`);},
                           onCancel:()=>setConfirmModal({isOpen:false})})}
-                          className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 bg-red-50 text-red-400 hover:text-red-600 p-1 rounded-md transition-all no-print">
-                          <Trash2 size={11}/>
+                          className="schedule-clear bg-red-50 text-red-600 rounded-lg no-print">
+                          <Trash2 size={12}/> Temizle
                         </button>
                       </th>
                     ))}
@@ -1011,12 +945,12 @@ function InfinityScheduler({ onNotify, dark }) {
                         <div className="font-700">{slot.start}</div>
                         <div className="text-slate-300 text-[9px]">—</div>
                         <div>{slot.end}</div>
-                        {slot.type!=='lesson' && <div className="text-[9px] font-700 text-indigo-400 mt-0.5 uppercase tracking-wider">{slot.type==='break'?'MOLA':slot.type==='lunch'?'YEMEK':'—'}</div>}
+                        {slot.type!=='lesson' && <div className="text-[9px] font-700 text-indigo-400 mt-0.5 uppercase tracking-wider">{slot.type==='break'?'MOLA':slot.type==='lunch'?'YEMEK':'SUNUM'}</div>}
                       </td>
                       {slot.type !== 'lesson' ? (
                         <td colSpan={classes.length} className="p-3 text-center bg-stripes">
                           <span className="text-[11px] font-700 tracking-widest dk-text-muted uppercase">
-                            {slot.type==='break'?'🔔 Teneffüs':slot.type==='lunch'?'🍽️ Öğle Arası':'Mola'}
+                            {slot.type==='break'?'🔔 Teneffüs':slot.type==='lunch'?'🍽️ Öğle Arası':(slot.title||'🎤 Açılış sunumu · Tüm ekip ve sınıflar')}
                           </span>
                         </td>
                       ) : (
@@ -1027,7 +961,7 @@ function InfinityScheduler({ onNotify, dark }) {
                             <td key={cls.id} className="p-1 align-top" style={{ height:88 }}
                               onDragOver={e=>e.preventDefault()} onDrop={e=>handleDrop(e,cls.id,slot.id)}>
                               {cell ? (
-                                <div draggable={!isNoClass} onDragStart={e=>handleDragStart(e,cls.id,slot.id,cell)}
+                                <div role="button" tabIndex={0} aria-label={`${cls.name} ${slot.start} ${cell.name} atamasını düzenle`} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();handleSlotClick(cls.id,slot.id,cell);}}} draggable={!isNoClass} onDragStart={e=>handleDragStart(e,cls.id,slot.id,cell)}
                                   onClick={()=>handleSlotClick(cls.id,slot.id,cell)}
                                   className={`h-full p-2 rounded-xl cursor-pointer flex flex-col justify-between transition-all hover:brightness-95 active:scale-[.98] select-none
                                     ${isNoClass?'slot-cell-noclass items-center justify-center':cell.isMust?'slot-cell-must':'slot-cell-opt'}`}>
@@ -1038,14 +972,14 @@ function InfinityScheduler({ onNotify, dark }) {
                                   {!isNoClass && (
                                     <div className="text-[10px] font-500 text-slate-500 truncate flex items-center gap-1 mt-1">
                                       <span className="w-3.5 h-3.5 rounded-full bg-white/80 border border-slate-200 flex items-center justify-center text-[8px] shrink-0">👤</span>
-                                      <span className="truncate">{cell.lead}</span>
+                                      <span className="truncate">{cell.lead}{cell.support?.length ? ' + '+cell.support.length+' yardımcı' : ''}</span>
                                     </div>
                                   )}
                                 </div>
                               ) : (
-                                <div onClick={()=>handleSlotClick(cls.id,slot.id,null)}
-                                  className="h-full flex items-center justify-center slot-cell-empty cursor-pointer transition-all rounded-xl hover:border-indigo-300 hover:bg-indigo-50/50 no-print">
-                                  <Plus size={18} className="text-slate-300 hover:text-indigo-400" strokeWidth={2.5}/>
+                                <div role="button" tabIndex={0} aria-label={`${cls.name} ${slot.start} etkinlik ekle`} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();handleSlotClick(cls.id,slot.id,null);}}} onClick={()=>handleSlotClick(cls.id,slot.id,null)}
+                                  className="h-full flex flex-col gap-1 items-center justify-center slot-cell-empty cursor-pointer transition-all rounded-xl hover:border-indigo-300 hover:bg-indigo-50/50 no-print">
+                                  <Plus size={18} className="text-indigo-400" strokeWidth={2.5}/><span className="text-xs text-indigo-600 font-600">Etkinlik ekle</span>
                                 </div>
                               )}
                             </td>
@@ -1068,25 +1002,17 @@ function InfinityScheduler({ onNotify, dark }) {
 
       {/* ── VIEW: Gönüllüler ── */}
       {activeView === 'volunteers' && (
-        <div className={`${cardCls} p-6 animate-fadeIn`}>
+        <div className={`${cardCls} ui-controls control-section p-6 animate-fadeIn`}>
           <h3 className="text-lg font-700 dk-text flex items-center gap-2 mb-5">
             <Users size={20} className="text-indigo-600"/> Gönüllü Yönetimi
             <span className="ml-1 text-sm font-500 dk-text-muted">{volunteers.length} kişi</span>
           </h3>
-          <div className="flex flex-wrap gap-2 mb-6">
-            <input type="text" id="newVol" placeholder="Ad Soyad" onKeyDown={e=>{
-              if(e.key==='Enter'&&e.target.value.trim()){const u=[...volunteers,{id:uuid(),name:e.target.value.trim(),capabilities:[]}];setVolunteers(u);syncVolunteers(u);e.target.value='';onNotify("Eklendi.");}
-            }} className={inputCls}/>
-            <button onClick={()=>{const el=document.getElementById('newVol');const v=el.value.trim();if(v){const u=[...volunteers,{id:uuid(),name:v,capabilities:[]}];setVolunteers(u);syncVolunteers(u);el.value='';onNotify("Eklendi.");}}} className={btnPrim}>
-              <Plus size={16}/> Ekle
-            </button>
-            <button onClick={()=>setBulkModalOpen(true)} className="bg-emerald-600 text-white px-5 py-2.5 rounded-xl text-sm font-700 hover:bg-emerald-700 flex items-center gap-2 transition-colors shadow-sm">
-              <Users size={16}/> Toplu Ekle
-            </button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {volunteers.map(vol=>(
+          <VolunteerEntry activities={activities} volunteers={volunteers} onSave={next=>{setVolunteers(next);syncVolunteers(next);if(participants)setParticipants(p=>[...new Set([...p,...next.filter(v=>!volunteers.some(old=>old.id===v.id)).map(v=>v.id)])]);onNotify('Ortak gönüllü listesi güncellendi.');}}/>
+          <p className="dk-text-muted text-sm mb-4">Gönüllü listesi ortaktır. Bölündüğünüz günlerde bu okulda görevli kişileri işaretleyin.</p><div className="flex gap-3 mb-4 text-sm text-indigo-600"><button onClick={()=>setParticipants(null)}>Herkes bu okulda</button><button onClick={()=>setParticipants([])}>Seçimi temizle</button><span>{programVolunteers.length} görevli / {volunteers.length} gönüllü</span></div>
+          <input aria-label="Gönüllü ara" value={volunteerQuery} onChange={e=>setVolunteerQuery(e.target.value)} placeholder="Listede gönüllü ara…" className="volunteer-search dk-input border dk-border rounded-xl p-3"/><div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {volunteers.filter(v=>norm(v.name).includes(norm(volunteerQuery))).map(vol=>(
               <div key={vol.id} className="dk-card-inner border dk-border rounded-2xl p-4 flex flex-col gap-3 hover:border-indigo-300 transition-colors">
+                <label className="text-sm dk-text flex gap-2"><input type="checkbox" checked={!participants||participants.includes(vol.id)} onChange={e=>setParticipants(prev=>{const ids=prev||volunteers.map(v=>v.id);return e.target.checked?[...new Set([...ids,vol.id])]:ids.filter(id=>id!==vol.id);})}/>Bu okulda görevli</label>
                 <div className="flex items-center justify-between gap-2">
                   <input value={vol.name} onChange={e=>{const u=volunteers.map(v=>v.id===vol.id?{...v,name:e.target.value}:v);setVolunteers(u);syncVolunteers(u);}}
                     className="font-700 text-sm dk-text bg-transparent border-b-2 border-transparent focus:border-indigo-300 outline-none flex-1 transition-colors"/>
@@ -1100,7 +1026,7 @@ function InfinityScheduler({ onNotify, dark }) {
                   Yetkinlikler ({vol.capabilities.length}/{activities.length})
                 </div>
                 <div className="max-h-44 overflow-y-auto custom-scroll grid gap-1 pr-1">
-                  {activities.map(act=>(
+                  {activities.filter(a=>a.cat!=='presentation').map(act=>(
                     <label key={act.id} className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs cursor-pointer transition-all
                       ${vol.capabilities.includes(act.id)?'bg-indigo-50 border-indigo-200 text-indigo-700 font-600 dark:bg-indigo-900/30 dark:border-indigo-700 dark:text-indigo-300':'bg-white border-slate-100 text-slate-500 hover:border-slate-200 font-400 dk-card-inner dk-border'}`}>
                       <input type="checkbox" className="hidden" checked={vol.capabilities.includes(act.id)} onChange={()=>{
@@ -1125,70 +1051,7 @@ function InfinityScheduler({ onNotify, dark }) {
         </div>
       )}
 
-      {/* ── VIEW: Etkinlikler ── */}
-      {activeView === 'activities' && (
-        <div className={`${cardCls} p-6 animate-fadeIn`}>
-          <h3 className="text-lg font-700 dk-text flex items-center gap-2 mb-5">
-            <Package size={20} className="text-indigo-600"/> Etkinlik Kataloğu
-            <span className="ml-1 text-sm font-500 dk-text-muted">{activities.length} etkinlik</span>
-          </h3>
-          <div className="flex flex-wrap gap-2 mb-6 dk-card-inner p-3 rounded-xl border dk-border">
-            <input type="text" id="newActName" placeholder="Etkinlik adı…" className={`${inputCls} min-w-40`}/>
-            <div className="flex items-center gap-2 dk-card px-3 py-2 rounded-xl border dk-border">
-              <span className="text-[10px] font-700 dk-text-muted uppercase">Kutu</span>
-              <input type="number" id="newActBox" defaultValue={1} min="1" max="99" className="w-10 font-700 text-sm text-indigo-600 outline-none text-center bg-transparent"/>
-            </div>
-            <label className="flex items-center gap-2 dk-card px-3 py-2 rounded-xl border dk-border cursor-pointer select-none">
-              <input type="checkbox" id="newActMust" className="accent-indigo-600"/>
-              <span className="text-xs font-700 dk-text">Zorunlu ⭐</span>
-            </label>
-            <button onClick={()=>{
-              const n=document.getElementById('newActName'),b=document.getElementById('newActBox'),m=document.getElementById('newActMust');
-              const v=n.value.trim();
-              if(v){setActivities(prev=>[...prev,{id:uuid(),name:v,cat:'science',isMust:m.checked,boxCount:Number(b.value)||1,allowedGrades:[0,1,2,3,4,5,6,7,8]}]);n.value='';b.value=1;m.checked=false;onNotify("Etkinlik eklendi.");}
-            }} className={btnPrim}>
-              <Plus size={16}/> Ekle
-            </button>
-          </div>
-          <div className="space-y-3">
-            {activities.map(act=>(
-              <div key={act.id} className="dk-card-inner border dk-border rounded-xl p-4 flex flex-col xl:flex-row gap-3 items-start xl:items-center hover:border-indigo-200 transition-colors">
-                <input value={act.name} onChange={e=>setActivities(prev=>prev.map(a=>a.id===act.id?{...a,name:e.target.value}:a))}
-                  className="font-700 text-sm dk-text bg-transparent border-b-2 border-transparent focus:border-indigo-300 outline-none w-full xl:w-48 transition-colors"/>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <div className="flex items-center gap-1.5 dk-card px-3 py-1.5 rounded-lg border dk-border">
-                    <span className="text-[10px] font-700 dk-text-muted">Kutu</span>
-                    <input type="number" min="1" value={act.boxCount||1} onChange={e=>setActivities(prev=>prev.map(a=>a.id===act.id?{...a,boxCount:Number(e.target.value)}:a))} className="w-10 text-center text-sm font-700 text-slate-700 outline-none bg-transparent"/>
-                  </div>
-                  <label className="flex items-center gap-1.5 dk-card px-3 py-1.5 rounded-lg border dk-border cursor-pointer hover:bg-slate-50 transition-colors">
-                    <input type="checkbox" checked={act.isMust||false} onChange={e=>setActivities(prev=>prev.map(a=>a.id===act.id?{...a,isMust:e.target.checked}:a))} className="accent-indigo-600"/>
-                    <span className="text-[10px] font-700 dk-text">Zorunlu</span>
-                  </label>
-                  <div className="flex items-center gap-1 flex-wrap">
-                    {[0,1,2,3,4,5,6,7,8].map(g=>{
-                      const sel=(act.allowedGrades||[]).includes(g);
-                      return <button key={g} onClick={()=>setActivities(prev=>prev.map(a=>{if(a.id!==act.id)return a;const gr=a.allowedGrades||[];return{...a,allowedGrades:gr.includes(g)?gr.filter(x=>x!==g):[...gr,g]};}))}
-                        className={`w-8 h-8 rounded-lg text-[11px] font-700 transition-all active:scale-95 ${sel?'bg-indigo-600 text-white shadow-sm':'dk-card border dk-border dk-text-muted hover:border-indigo-300'}`}>
-                        {g===0?'A':g}
-                      </button>;
-                    })}
-                  </div>
-                </div>
-                <button onClick={()=>setConfirmModal({isOpen:true,isDanger:true,title:'Etkinliği Sil',message:`"${act.name}" silinecek. Atandığı tüm slotlar da temizlenecek.`,
-                  onConfirm:()=>{
-                    setActivities(prev=>prev.filter(a=>a.id!==act.id));
-                    setClasses(prev=>prev.map(c=>({...c,schedule:Object.fromEntries(Object.entries(c.schedule||{}).filter(([,s])=>s.activityId!==act.id))})));
-                    setConfirmModal({isOpen:false});onNotify("Silindi.");
-                  },
-                  onCancel:()=>setConfirmModal({isOpen:false})})} className="ml-auto dk-text-muted hover:text-red-400 p-2 rounded-xl border dk-border hover:border-red-200 transition-colors dk-card">
-                  <Trash2 size={15}/>
-                </button>
-              </div>
-            ))}
-            {activities.length===0 && <div className="py-12 text-center text-sm dk-text-muted border-2 border-dashed dk-border rounded-2xl">Etkinlik kataloğu boş.</div>}
-          </div>
-        </div>
-      )}
+      {activeView==='activities'&&<ActivityManager activities={activities} onChange={setActivities} onNotify={onNotify} onRemove={act=>setConfirmModal({isOpen:true,isDanger:true,title:'Etkinliği kaldır',message:`${act.name} ve bu programdaki atamaları kaldırılacak. Diğer okul programlarındaki eski atamalar ayrıca kontrol edilmelidir.`,onConfirm:()=>{setUndoState({activities,volunteers,timeSlots,classes});setActivities(prev=>prev.filter(a=>a.id!==act.id));setClasses(prev=>prev.map(c=>({...c,schedule:Object.fromEntries(Object.entries(c.schedule||{}).filter(([,cell])=>cell.activityId!==act.id))})));setConfirmModal({isOpen:false});},onCancel:()=>setConfirmModal({isOpen:false})})}/>}
 
       {/* ── VIEW: Setup ── */}
       {activeView === 'setup' && (
@@ -1196,90 +1059,28 @@ function InfinityScheduler({ onNotify, dark }) {
           {/* Sınıflar */}
           <div className={cardCls}>
             <h3 className="text-base font-700 dk-text flex items-center gap-2 mb-4"><BookOpen size={18} className="text-indigo-600"/> Şubeler</h3>
-            <div className="flex flex-wrap gap-2 mb-4">
-              {['Ana Sınıfı','1-A','1-B','2-A','2-B','3-A','3-B','4-A','4-B','5-A','5-B','6-A','6-B','7-A','7-B','8-A','8-B'].map(n=>{
-                const sel=classes.find(c=>c.name===n);
-                return <button key={n} onClick={()=>{if(sel)setClasses(prev=>prev.filter(c=>c.name!==n));else setClasses(prev=>[...prev,{id:uuid(),name:n,schedule:{}}]);}}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-700 border-2 transition-all active:scale-95 ${sel?'bg-indigo-600 border-indigo-600 text-white shadow-sm':'dk-card border dk-border dk-text-muted hover:border-indigo-300 hover:text-indigo-500'}`}>
-                  {n}
-                </button>;
-              })}
-            </div>
-            <div className="flex gap-2 pt-4 border-t dk-border">
-              <input type="text" id="newClass" placeholder="Özel sınıf (Örn: 9-C)" onKeyDown={e=>{
-                if(e.key==='Enter'&&e.target.value.trim()){const v=e.target.value.trim();if(classes.find(c=>c.name===v))onNotify("Zaten var!");else{setClasses(prev=>[...prev,{id:uuid(),name:v,schedule:{}}]);e.target.value='';onNotify("Eklendi.");}}
-              }} className={inputCls}/>
-              <button onClick={()=>{const v=document.getElementById('newClass').value.trim();if(v&&!classes.find(c=>c.name===v)){setClasses(prev=>[...prev,{id:uuid(),name:v,schedule:{}}]);document.getElementById('newClass').value='';onNotify("Eklendi.");}}} className="bg-slate-800 text-white px-5 py-2 rounded-xl text-sm font-700 hover:bg-slate-700 transition-colors">Ekle</button>
-            </div>
+            <ClassPicker classes={classes} onAdd={names=>{const clean=names.map(n=>n.trim().toLocaleUpperCase('tr')).filter(Boolean);setUndoState({activities,volunteers,timeSlots,classes});setClasses(prev=>[...prev,...[...new Set(clean)].filter(n=>!prev.some(c=>norm(c.name)===norm(n))).map(name=>({id:uuid(),name,schedule:{}}))]);}}/>
             {classes.length>0 && (
               <div className="mt-3 flex flex-wrap gap-2">
                 {classes.map(c=>(
                   <span key={c.id} className="flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-100 px-3 py-1.5 rounded-xl text-xs font-700">
                     {c.name}
-                    <button onClick={()=>setClasses(prev=>prev.filter(x=>x.id!==c.id))} className="hover:text-red-500 transition-colors ml-1"><X size={10}/></button>
+                    <button aria-label={`${c.name} sınıfını kaldır`} onClick={()=>setConfirmModal({isOpen:true,isDanger:true,title:'Sınıfı kaldır',message:`${c.name} ve atamaları bu programdan kaldırılacak. Son değişikliği geri alabilirsiniz.`,onConfirm:()=>{setUndoState({activities,volunteers,timeSlots,classes});setClasses(prev=>prev.filter(x=>x.id!==c.id));setConfirmModal({isOpen:false});},onCancel:()=>setConfirmModal({isOpen:false})})} className="hover:text-red-500 transition-colors ml-1"><X size={10}/></button>
                   </span>
                 ))}
               </div>
             )}
           </div>
 
-          {/* Zaman */}
-          <div className={cardCls}>
-            <h3 className="text-base font-700 dk-text flex items-center gap-2 mb-4"><Calendar size={18} className="text-indigo-600"/> Zaman Çizelgesi</h3>
-            <div className="flex flex-wrap gap-2 mb-4">
-              {[{l:'+30dk Ders',d:30,t:'lesson'},{l:'+40dk Ders',d:40,t:'lesson'},{l:'+60dk Ders',d:60,t:'lesson'},{l:'+15dk Mola',d:15,t:'break'},{l:'+45dk Yemek',d:45,t:'lunch'}].map(btn=>(
-                <button key={btn.l} onClick={()=>{
-                  const last=timeSlots.length>0?timeSlots[timeSlots.length-1].end:'09:00';
-                  let [h,m]=last.split(':').map(Number);m+=btn.d;h+=Math.floor(m/60);m=m%60;
-                  setTimeSlots(prev=>[...prev,{id:uuid(),start:last,end:`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`,type:btn.t}]);
-                }} className="px-3 py-1.5 text-xs font-700 dk-card border dk-border rounded-lg hover:border-indigo-300 hover:text-indigo-600 transition-colors active:scale-95 dk-text">
-                  {btn.l}
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-2 mb-4 dk-card-inner p-2 rounded-xl border dk-border">
-              <input type="number" id="customMin" defaultValue={20} className="w-16 text-center text-sm font-700 dk-text dk-card border dk-border rounded-lg outline-none px-2 py-1.5"/>
-              <select id="customType" className="text-sm font-500 dk-text flex-1 dk-card border dk-border rounded-lg outline-none px-2 cursor-pointer">
-                <option value="lesson">📚 Ders</option><option value="break">🔔 Mola</option><option value="lunch">🍽️ Yemek</option><option value="presentation">🎤 Sunum</option>
-              </select>
-              <button onClick={()=>{
-                const min=parseInt(document.getElementById('customMin').value)||20;
-                const typ=document.getElementById('customType').value;
-                const last=timeSlots.length>0?timeSlots[timeSlots.length-1].end:'09:00';
-                let [h,m]=last.split(':').map(Number);m+=min;h+=Math.floor(m/60);m=m%60;
-                setTimeSlots(prev=>[...prev,{id:uuid(),start:last,end:`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`,type:typ}]);
-              }} className="bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-sm font-700 hover:bg-indigo-700 transition-colors">Ekle</button>
-            </div>
-            <div className="space-y-2 max-h-72 overflow-y-auto custom-scroll pr-1">
-              {timeSlots.map((slot,i)=>(
-                <div key={slot.id} className={`flex gap-2 items-center p-2.5 rounded-xl border dk-border ${slot.type==='lesson'?'dk-card':'dk-card-inner'}`}>
-                  <span className="text-[10px] font-700 dk-text-muted w-4 text-center">{i+1}</span>
-                  <input type="time" value={slot.start} onChange={e=>{const n=[...timeSlots];n[i].start=e.target.value;setTimeSlots(n)}} className="font-mono text-sm font-500 dk-text bg-transparent outline-none w-20 focus:text-indigo-500"/>
-                  <span className="dk-text-muted">—</span>
-                  <input type="time" value={slot.end} onChange={e=>{const n=[...timeSlots];n[i].end=e.target.value;setTimeSlots(n)}} className="font-mono text-sm font-500 dk-text bg-transparent outline-none w-20 focus:text-indigo-500"/>
-                  <select value={slot.type} onChange={e=>{const n=[...timeSlots];n[i].type=e.target.value;setTimeSlots(n)}} className="text-xs font-500 dk-text-muted bg-transparent outline-none flex-1 cursor-pointer">
-                    <option value="lesson">📚 Ders</option><option value="break">🔔 Teneffüs</option><option value="lunch">🍽️ Yemek</option><option value="presentation">🎤 Sunum</option>
-                  </select>
-                  <button onClick={()=>{const n=[...timeSlots];n.splice(i,1);setTimeSlots(n)}} className="dk-text-muted hover:text-red-400 p-1.5 rounded-lg hover:bg-red-50 transition-colors"><Trash2 size={13}/></button>
-                </div>
-              ))}
-              {timeSlots.length===0 && <div className="text-center text-sm dk-text-muted py-6 border-2 border-dashed dk-border rounded-xl">Henüz saat yok.</div>}
-            </div>
-            {timeSlots.length===0 && (
-              <button onClick={()=>setConfirmModal({isOpen:true,title:'Şablon Yükle',message:'09:00–14:05 standart şablon yüklenecek.',
-                onConfirm:()=>{setTimeSlots([{id:'t1',start:'09:00',end:'09:40',type:'lesson'},{id:'t2',start:'09:40',end:'09:55',type:'break'},{id:'t3',start:'09:55',end:'10:35',type:'lesson'},{id:'t4',start:'10:35',end:'10:50',type:'break'},{id:'t5',start:'10:50',end:'11:30',type:'lesson'},{id:'t6',start:'11:30',end:'12:30',type:'lunch'},{id:'t7',start:'12:30',end:'13:10',type:'lesson'},{id:'t8',start:'13:10',end:'13:25',type:'break'},{id:'t9',start:'13:25',end:'14:05',type:'lesson'}]);setConfirmModal({isOpen:false});onNotify("Şablon yüklendi.");},
-                onCancel:()=>setConfirmModal({isOpen:false})})}
-                className="mt-3 w-full bg-emerald-50 border-2 border-emerald-100 text-emerald-700 py-2.5 rounded-xl text-sm font-700 hover:bg-emerald-100 transition-colors flex items-center justify-center gap-2">
-                <Sparkles size={15}/> Standart Şablon Yükle (09:00–14:05)
-              </button>
-            )}
-          </div>
+          <TimeEditor key={JSON.stringify(timeSlots)} slots={timeSlots} classes={classes}
+            onSave={next=>applyState({timeSlots:next})} onNotify={onNotify}/>
+
         </div>
       )}
 
       {/* MODAL: Slot Edit */}
       {editingSlot && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
+        <div role="dialog" aria-modal="true" aria-label="Atamayı düzenle" className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh] animate-scaleIn border border-slate-100 overflow-hidden dk-card dk-border">
             <div className="flex items-center justify-between p-5 border-b dk-border dk-card-inner">
               <div>
@@ -1288,7 +1089,7 @@ function InfinityScheduler({ onNotify, dark }) {
                   {classes.find(c=>c.id===editingSlot.clsId)?.name} — {timeSlots.find(t=>t.id===editingSlot.slotId)?.start}–{timeSlots.find(t=>t.id===editingSlot.slotId)?.end}
                 </p>
               </div>
-              <button onClick={()=>setEditingSlot(null)} className="p-2 dk-text-muted hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"><X size={17}/></button>
+              <button aria-label="Atamayı kapat" onClick={()=>setEditingSlot(null)} className="p-2 dk-text-muted hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"><X size={17}/></button>
             </div>
             <div className="p-5 overflow-y-auto custom-scroll space-y-4">
               <div>
@@ -1298,7 +1099,7 @@ function InfinityScheduler({ onNotify, dark }) {
                     const m=activities.find(a=>a.name.toLocaleLowerCase('tr')===e.target.value.toLocaleLowerCase('tr'));
                     setEditingSlot({...editingSlot,data:{...editingSlot.data,name:e.target.value,activityId:m?.id||''}});
                   }}/>
-                <datalist id="acts-list">{activities.map(a=><option key={a.id} value={a.name}/>)}</datalist>
+                <datalist id="acts-list">{activities.filter(a=>a.cat!=='presentation').map(a=><option key={a.id} value={a.name}/>)}</datalist>
                 {editingSlot.data.name&&!activities.find(a=>a.name===editingSlot.data.name)&&editingSlot.data.activityId!=='NO_CLASS' && (
                   <p className="text-xs text-indigo-600 mt-1 font-600 bg-indigo-50 px-2 py-1 rounded-lg inline-block">+ Yeni etkinlik olarak eklenecek</p>
                 )}
@@ -1311,6 +1112,7 @@ function InfinityScheduler({ onNotify, dark }) {
                   {volunteers.map(v=><option key={v.id} value={v.id}>{v.name}{!v.capabilities.includes(editingSlot.data.activityId)?' ⚠️':' ✓'}</option>)}
                 </select>
               </div>
+              <div><p className="text-sm font-700 dk-text mb-2">Yardımcı gönüllüler</p><div className="flex flex-wrap gap-2">{volunteers.filter(v=>v.id!==editingSlot.data.leadId).map(v=><label key={v.id} className="text-xs dk-text flex gap-1 items-center"><input type="checkbox" checked={(editingSlot.data.support||[]).includes(v.id)} onChange={e=>setEditingSlot(p=>({...p,data:{...p.data,support:e.target.checked?[...(p.data.support||[]),v.id]:(p.data.support||[]).filter(id=>id!==v.id)}}))}/>{v.name}</label>)}</div></div>
               <div className="dk-card-inner p-4 rounded-xl border dk-border space-y-2">
                 <p className="text-[10px] font-700 dk-text-muted uppercase tracking-widest mb-2">Hızlı Kapatma</p>
                 <button onClick={markAsNoClass} className="w-full py-2.5 dk-card border dk-border dk-text hover:bg-slate-100 rounded-xl text-sm font-600 flex justify-center gap-2 transition-colors"><Minus size={15}/> Sadece Bu Sınıfa Kapat</button>
@@ -1319,7 +1121,7 @@ function InfinityScheduler({ onNotify, dark }) {
             </div>
             <div className="flex gap-3 p-5 border-t dk-border">
               {editingSlot.data.activityId && (
-                <button onClick={()=>{setEditingSlot({...editingSlot,data:{activityId:'delete'}});setTimeout(saveSlotEdit,50);}}
+                <button onClick={()=>{setUndoState({activities,volunteers,timeSlots,classes});setClasses(prev=>prev.map(c=>c.id!==editingSlot.clsId?c:{...c,schedule:Object.fromEntries(Object.entries(c.schedule||{}).filter(([id])=>id!==editingSlot.slotId))}));setEditingSlot(null);onNotify('Atama kaldırıldı.');}}
                   className="flex-1 border-2 border-red-100 text-red-500 hover:bg-red-50 py-3 rounded-xl text-sm font-700 flex justify-center gap-2 transition-colors"><Trash2 size={16}/> Sil</button>
               )}
               <button onClick={saveSlotEdit} className="flex-[2] bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl text-sm font-700 flex justify-center gap-2 transition-all active:scale-95 shadow-sm"><CheckCircle2 size={16}/> Kaydet</button>
@@ -1330,16 +1132,16 @@ function InfinityScheduler({ onNotify, dark }) {
 
       {/* MODAL: Toplu Gönüllü */}
       {bulkModalOpen && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
+        <div role="dialog" aria-modal="true" aria-label="Liste veya program yapıştır" className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg animate-scaleIn border border-slate-100 overflow-hidden dk-card dk-border">
             <div className="flex items-center justify-between p-5 border-b dk-border dk-card-inner">
-              <h3 className="text-base font-700 dk-text">Toplu Gönüllü Ekle</h3>
-              <button onClick={()=>setBulkModalOpen(false)} className="p-2 dk-text-muted hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"><X size={17}/></button>
+              <h3 className="text-base font-700 dk-text">Liste veya Program Yapıştır</h3>
+              <button aria-label="Yapıştırma penceresini kapat" onClick={()=>setBulkModalOpen(false)} className="p-2 dk-text-muted hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"><X size={17}/></button>
             </div>
             <div className="p-5">
               <p className="text-xs dk-text-muted font-500 mb-3">
-                Excel'den kopyaladığınız listeyi yapıştırın. <span className="text-indigo-600 font-700">Her satır 1 kişi.</span>{' '}
-                İkinci sütuna yetkinlikleri yazarsanız otomatik eşleşir.
+                Excel'den kopyaladığınız listeyi yapıştırın. <span className="text-indigo-600 font-700">Sınıf, gönüllü, etkinlik veya program tablosu.</span>{' '}
+                Önce tür ve içerik önizlemesi gösterilir.
               </p>
               <textarea className="w-full h-56 border border-slate-200 p-3 rounded-xl text-sm font-400 dk-text outline-none focus:border-indigo-400 resize-none dk-card-inner focus:bg-white transition-colors font-mono"
                 placeholder={"Mustafa Berke Şimşekler\tOrigami, Robotik\nEda Nur Keklik\tYaratıcı Drama\nHüseyin Vural"}
@@ -1362,417 +1164,26 @@ function InfinityScheduler({ onNotify, dark }) {
   );
 }
 
-// ─── INTERACTIVE TEXT ─────────────────────────────────────────────────────────
-const InteractiveText = ({ text, size, offsetY, onUpdate, className, style, placeholder, isEditable }) => {
-  const [dragging, setDragging] = useState(false);
-  const startPos = useRef({ x:0, y:0 });
-  const startVals= useRef({ size:0, offset:0 });
-  const onMouseDown = e => {
-    if (e.button!==0) return; e.preventDefault();
-    setDragging(true); startPos.current={x:e.clientX,y:e.clientY}; startVals.current={size,offset:offsetY||0};
-  };
-  useEffect(() => {
-    const move = e => {
-      if (!dragging) return;
-      const dx=e.clientX-startPos.current.x, dy=e.clientY-startPos.current.y;
-      onUpdate(Math.max(10,Math.min(200,startVals.current.size+dx/3)), startVals.current.offset+dy);
-    };
-    const up = () => setDragging(false);
-    if (dragging) { window.addEventListener('mousemove',move); window.addEventListener('mouseup',up); }
-    return () => { window.removeEventListener('mousemove',move); window.removeEventListener('mouseup',up); };
-  }, [dragging, onUpdate]);
-  return (
-    <div className={`relative group/t cursor-move select-none ${className}`}
-      style={{...style, fontSize:`${size}px`, transform:`translateY(${offsetY}px)`, touchAction:'none'}} onMouseDown={onMouseDown}>
-      <div className={`absolute -top-6 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] px-2 py-1 rounded whitespace-nowrap z-50 pointer-events-none ${dragging?'opacity-100':'opacity-0 group-hover/t:opacity-60'} transition-opacity`}>
-        {Math.round(size)}px
-      </div>
-      {isEditable
-        ? <input type="text" value={text} onChange={isEditable} className="bg-transparent text-center w-full outline-none" onMouseDown={e=>e.stopPropagation()}/>
-        : <span>{text || placeholder}</span>}
-    </div>
-  );
-};
-
-// ─── INTERACTIVE PHOTO ────────────────────────────────────────────────────────
-const InteractivePhoto = ({ src, scale, translateX, translateY, onUpdate, id }) => {
-  const [dragging, setDragging] = useState(false);
-  const startPos  = useRef({x:0,y:0});
-  const startVals = useRef({x:0,y:0});
-  const onMouseDown = e => {
-    if (e.button!==0||!src) return; e.preventDefault(); setDragging(true);
-    startPos.current={x:e.clientX,y:e.clientY}; startVals.current={x:translateX||0,y:translateY||0};
-  };
-  useEffect(() => {
-    const move = e => { if(!dragging)return; onUpdate(id,scale||1,startVals.current.x+(e.clientX-startPos.current.x),startVals.current.y+(e.clientY-startPos.current.y)); };
-    const up = () => setDragging(false);
-    if (dragging) { window.addEventListener('mousemove',move); window.addEventListener('mouseup',up); }
-    return () => { window.removeEventListener('mousemove',move); window.removeEventListener('mouseup',up); };
-  }, [dragging, id, scale, onUpdate]);
-  return (
-    <div className="relative w-full h-full cursor-move overflow-hidden bg-slate-50 rounded-xl select-none touch-none group/img" onMouseDown={onMouseDown}>
-      {src ? (
-        <img src={src} alt="Gönüllü" className="max-w-none absolute inset-0 w-full h-full pointer-events-none select-none"
-          style={{objectFit:'contain',transform:`scale(${scale||1}) translate(${translateX||0}px,${translateY||0}px)`,transformOrigin:'center center'}}/>
-      ) : (
-        <div className="flex flex-col items-center justify-center h-full text-slate-300 gap-1">
-          <Camera size={18}/><span className="text-[7px] font-700 uppercase no-print">Tıkla Yükle</span>
-        </div>
-      )}
-      {src && !dragging && (
-        <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white/90 px-2 py-1 rounded-full shadow-sm no-print opacity-0 group-hover/img:opacity-100 transition-opacity z-20 border border-slate-100 scale-75">
-          <Minus size={8} className="text-slate-400"/>
-          <input type="range" min="1" max="5" step="0.05" value={scale||1}
-            onChange={e=>onUpdate(id,parseFloat(e.target.value),translateX,translateY)}
-            className="w-12 h-1 bg-indigo-100 rounded-lg accent-indigo-600 cursor-pointer appearance-none"
-            onMouseDown={e=>e.stopPropagation()}/>
-          <PlusCircle size={8} className="text-indigo-500"/>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// ─── MODULE 2: İSİMLİK MATBAASI ──────────────────────────────────────────────
-function NameTagApp({ onNotify, dark }) {
-  const ROWS = 5;
-  // cm/mm based sizing — real nametags are 85mm x 55mm (standard) or 100mm x 30mm (horizontal)
-  const NAMETAG_FORMATS = [
-    { id:'standard',  label:'Standart (85×55mm)',  w:85, h:55, namePx:54, surnPx:11 },
-    { id:'horizontal',label:'Yatay Uzun (100×30mm)',w:100,h:30, namePx:36, surnPx:9  },
-    { id:'badge',     label:'Rozet (60×90mm)',      w:60, h:90, namePx:62, surnPx:12 },
-    { id:'wide',      label:'Geniş Yatay (120×40mm)',w:120,h:40,namePx:44, surnPx:10 },
-  ];
-  const [format, setFormat]           = useState('standard');
-  const [pagePadding, setPagePadding] = useState(5);
-  const [cardGap, setCardGap]         = useState(2);
-  const [vertComp, setVertComp]       = useState(0);
-  const [globalScale, setGlobalScale] = useState(100);
-  const [cmScale, setCmScale]         = useState(100); // percentage of real-world cm
-  const [volunteers, setVolunteers]   = useState(() => db.load(DB_KEYS.NAMETAG_VOLUNTEERS, []));
-  const [aiState, setAiState]         = useState('idle');
-  const [warnings, setWarnings]       = useState([]);
-  const [confirmModal, setConfirmModal] = useState({isOpen:false});
-  const [promptModal,  setPromptModal]  = useState({isOpen:false});
-
-  const fmt = NAMETAG_FORMATS.find(f=>f.id===format) || NAMETAG_FORMATS[0];
-  // Convert mm to px at 96dpi: 1mm = 3.7795px
-  const MM_TO_PX = 3.7795;
-  const cardW = fmt.w * MM_TO_PX * (cmScale/100);
-  const cardH = fmt.h * MM_TO_PX * (cmScale/100);
-
-  useEffect(() => { db.save(DB_KEYS.NAMETAG_VOLUNTEERS, volunteers); syncVolunteers(volunteers); }, [volunteers]);
-
-  useEffect(() => {
-    if (aiState==='processing') return;
-    const issues = [];
-    volunteers.forEach(v => {
-      const nameLen = (v.name||'').length;
-      const estPx = fmt.namePx * (cmScale/100) * (globalScale/100);
-      // Estimate rendered width: ~0.6 * fontSize per char for average Latin char
-      const estWidth = nameLen * estPx * 0.55;
-      const availW   = cardW - 8; // padding
-      if (estWidth > availW)
-        issues.push({ msg: `"${v.name.split(' ')[0]}" ismi karta sığmayabilir (${Math.round(estWidth)}px > ${Math.round(availW)}px). Yazı boyutunu küçültün.` });
-      if (nameLen > 28)
-        issues.push({ msg: `"${v.name}" ismi çok uzun (${nameLen} karakter).` });
-    });
-    setWarnings(issues);
-  }, [volunteers, aiState, fmt, cmScale, globalScale, cardW]);
-
-  const handleAutoFix = () => {
-    setAiState('processing');
-    setTimeout(() => {
-      setVolunteers(prev=>prev.map(v=>({...v, nameSize: fmt.namePx, nameY:0, surnameSize:fmt.surnPx, surnameY:5 })));
-      setAiState('idle'); onNotify("İsimlikler standart formata ayarlandı!");
-    }, 1000);
-  };
-
-  const formatNameDisplay = fullName => {
-    const parts = fullName.trim().split(' ');
-    if (parts.length===1) return { first:parts[0], last:'' };
-    return { first:parts.slice(0,-1).join(' '), last:parts[parts.length-1] };
-  };
-
-  const pages = [];
-  for (let i=0; i<volunteers.length; i+=ROWS) {
-    const chunk = volunteers.slice(i,i+ROWS);
-    pages.push({type:'names',items:chunk});
-    pages.push({type:'questions',items:chunk});
-  }
-
-  return (
-    <div className="space-y-5 relative">
-      <ConfirmModal {...confirmModal} dark={dark}/>
-      <PromptModal  {...promptModal}/>
-
-      <div className="no-print space-y-4">
-        {warnings.length > 0 && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {warnings.map((w,i)=>(
-              <div key={i} className="text-xs font-500 text-amber-700 flex items-start gap-1.5">
-                <AlertTriangle size={12} className="shrink-0 mt-0.5"/> {w.msg}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Format seçimi */}
-        <div className="dk-card border dk-border rounded-2xl shadow-sm p-5 grid grid-cols-2 md:grid-cols-4 gap-3">
-          {NAMETAG_FORMATS.map(f=>(
-            <button key={f.id} onClick={()=>setFormat(f.id)}
-              className={`p-3 rounded-xl border-2 text-left transition-all ${format===f.id?'border-indigo-500 bg-indigo-50 text-indigo-700':'dk-border dk-card dk-text hover:border-indigo-300'}`}>
-              <div className="text-xs font-700 mb-1">{f.label}</div>
-              <div className="text-[10px] dk-text-muted font-500">{f.w}mm × {f.h}mm</div>
-              <div className="mt-2 border dk-border rounded" style={{width:'100%',height:Math.round(f.h/f.w*40),background:'rgba(99,102,241,.1)'}}/>
-            </button>
-          ))}
-        </div>
-
-        <div className="dk-card border dk-border rounded-2xl shadow-sm p-5 grid grid-cols-2 md:grid-cols-5 gap-5 items-end">
-          {[
-            {label:'Kenar Boşluğu (mm)', val:pagePadding, min:0,  max:30,  set:setPagePadding, color:'accent-indigo-600' },
-            {label:'Dikey Sıkıştır',     val:vertComp,    min:0,  max:30,  set:setVertComp,    color:'accent-orange-500'},
-            {label:'Kart Aralığı (mm)',  val:cardGap,     min:0,  max:20,  set:setCardGap,     color:'accent-teal-500'  },
-            {label:'Genel Ölçek (%)',    val:globalScale, min:60, max:100, set:setGlobalScale, color:'accent-indigo-600'},
-            {label:'Gerçek Boyut (%)',   val:cmScale,     min:50, max:150, set:setCmScale,     color:'accent-pink-500'  },
-          ].map(c=>(
-            <div key={c.label} className="flex flex-col gap-2">
-              <label className="text-[10px] font-700 dk-text-muted uppercase tracking-widest">{c.label}</label>
-              <div className="flex items-center gap-2">
-                <input type="range" min={c.min} max={c.max} value={c.val} onChange={e=>c.set(parseInt(e.target.value))} className={`w-full h-1.5 rounded-full cursor-pointer ${c.color}`}/>
-                <span className="text-xs font-700 dk-text w-8 text-right">{c.val}</span>
-              </div>
-            </div>
-          ))}
-          <button onClick={handleAutoFix} disabled={aiState==='processing'}
-            className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white px-4 py-2.5 rounded-xl text-sm font-700 flex gap-2 items-center justify-center shadow-sm transition-all active:scale-95 disabled:opacity-60">
-            {aiState==='processing'?<><RefreshCw size={15} className="animate-spin"/>İşleniyor</>:<><Wand2 size={15}/>B.A.L.K.I.Z.</>}
-          </button>
-        </div>
-      </div>
-
-      <div className="block space-y-12 pb-20 print:space-y-0 print:pb-0">
-        {pages.map((page,pIndex)=>(
-          <div key={pIndex} className="print-page bg-white shadow-xl mx-auto overflow-hidden print:shadow-none print:m-0" style={{padding:`${pagePadding}mm`}}>
-            <div className="grid grid-cols-2 w-full h-full" style={{
-              transform:`scale(${globalScale/100})`, transformOrigin:'top center',
-              height:`${100-vertComp}%`,
-              gridTemplateRows:`repeat(${ROWS}, 1fr)`,
-              gap:`${cardGap}mm`
-            }}>
-              {page.items.map((vol)=>{
-                const {first,last}=formatNameDisplay(vol.name||'');
-                const ns = vol.nameSize    || fmt.namePx;
-                const ss = vol.surnameSize || fmt.surnPx;
-                const ny = vol.nameY    || 0;
-                const sy = vol.surnameY || 5;
-
-                if (page.type==='names') return (
-                  <div key={vol.id} className="relative overflow-hidden flex flex-col" style={{minWidth:`${cardW}px`,maxWidth:`${cardW}px`,height:`${cardH}px`}}>
-                    <img src={IMAGES.NAME_BG} alt="" className="absolute inset-0 w-full h-full object-cover pointer-events-none" draggable={false}/>
-                    <div className="relative z-10 flex flex-col items-center justify-center h-full gap-0.5">
-                      <InteractiveText text={first} size={ns*(cmScale/100)} offsetY={ny}
-                        onUpdate={(s,o)=>setVolunteers(prev=>prev.map(v=>v.id===vol.id?{...v,nameSize:s/cmScale*100,nameY:o}:v))}
-                        className="font-comic font-black text-white text-center drop-shadow-md w-full px-2" style={{letterSpacing:'-.01em'}}/>
-                      {last && <InteractiveText text={last} size={ss*(cmScale/100)} offsetY={sy}
-                        onUpdate={(s,o)=>setVolunteers(prev=>prev.map(v=>v.id===vol.id?{...v,surnameSize:s/cmScale*100,surnameY:o}:v))}
-                        className="font-comic font-bold text-white/90 text-center w-full px-2"/>}
-                    </div>
-                    <button onClick={()=>setConfirmModal({isOpen:true,isDanger:true,title:'İsimliği Sil',message:`${vol.name} silinecek.`,
-                      onConfirm:()=>{const u=volunteers.filter(v=>v.id!==vol.id);syncVolunteers(u);setVolunteers(u);setConfirmModal({isOpen:false});},
-                      onCancel:()=>setConfirmModal({isOpen:false})})}
-                      className="absolute top-1 right-1 no-print opacity-0 hover:opacity-100 bg-black/30 text-white p-1 rounded-full transition-opacity">
-                      <Trash2 size={9}/>
-                    </button>
-                  </div>
-                );
-
-                return (
-                  <div key={vol.id} className="relative overflow-hidden" style={{minWidth:`${cardW}px`,maxWidth:`${cardW}px`,height:`${cardH}px`}}>
-                    <img src={IMAGES.QUESTION_BG} alt="" className="absolute inset-0 w-full h-full object-cover pointer-events-none" draggable={false}/>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ─── MODULE 3: GÖRSEL KOLAJ ───────────────────────────────────────────────────
-function CollageApp({ onNotify, dark }) {
-  const [projectTitle,   setProjectTitle]   = useState("İLKYAR ŞUBAT 2026 ANTALYA PROJESİ EKİBİ");
-  const [projectAddress, setProjectAddress] = useState("Adres: Çiğdem Mah. 1588.Sok. No:81 06580 Çankaya/ANKARA");
-  const [volunteers,     setVolunteers]     = useState(()=>db.load(DB_KEYS.COLLAGE_VOLUNTEERS,[]));
-  const [globalNameSize, setGlobalNameSize] = useState(16);
-  const [pagePadding,    setPagePadding]    = useState(12);
-  const [aiState,        setAiState]        = useState('idle');
-  const [confirmModal,   setConfirmModal]   = useState({isOpen:false});
-
-  useEffect(()=>{
-    db.save(DB_KEYS.COLLAGE_VOLUNTEERS,volunteers); syncVolunteers(volunteers);
-    const issues=[];
-    const missing=volunteers.filter(v=>!v.photo);
-    if(missing.length>0)issues.push({msg:`${missing.length} fotoğraf eksik.`});
-    const hIdx=volunteers.findIndex(v=>v.name.toLowerCase().includes("vural")||v.name.toLowerCase().includes("hüseyin"));
-    if(hIdx>0)issues.push({msg:'Hüseyin Hoca ilk sırada değil!'});
-    setWarnings(issues);
-  },[volunteers]);
-
-  const handleAutoFix=useCallback(()=>{
-    setAiState('processing');
-    setTimeout(()=>{
-      let sorted=[...volunteers].sort((a,b)=>a.name.localeCompare(b.name,'tr'));
-      const hIdx=sorted.findIndex(v=>v.name.toLowerCase().includes("vural")||v.name.toLowerCase().includes("hüseyin"));
-      if(hIdx>0){const h=sorted.splice(hIdx,1)[0];sorted.unshift(h);}
-      setVolunteers(sorted); setAiState('idle'); onNotify("Sıralandı!");
-    },800);
-  },[volunteers,onNotify]);
-
-  const cnt=volunteers.length;
-  let cols=3;
-  if(cnt<=4)cols=2;else if(cnt<=9)cols=3;else if(cnt<=16)cols=4;else cols=5;
-  const rows=Math.ceil(cnt/cols);
-
-  return (
-    <div className="space-y-5 relative">
-      <style>{`@media print { @page { size:A4 portrait; margin:0; } .collage-print-strict { width:210mm!important; height:297mm!important; max-height:297mm!important; overflow:hidden!important; display:flex!important; flex-direction:column!important; box-sizing:border-box!important; } }`}</style>
-      <ConfirmModal {...confirmModal} dark={dark}/>
-      <div className="no-print space-y-4">
-        {warnings.length>0 && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-wrap gap-3">
-            {warnings.map((w,i)=><div key={i} className="text-xs font-500 text-amber-700 flex items-center gap-1.5"><AlertTriangle size={12}/>{w.msg}</div>)}
-          </div>
-        )}
-        <div className="dk-card border dk-border rounded-2xl shadow-sm p-5 grid grid-cols-1 md:grid-cols-3 gap-5 items-end">
-          <div className="flex flex-col gap-2">
-            <label className="text-[10px] font-700 dk-text-muted uppercase tracking-widest flex items-center gap-1"><Type size={10}/> İsim Boyutu</label>
-            <input type="range" min="10" max="35" value={globalNameSize} onChange={e=>setGlobalNameSize(parseInt(e.target.value))} className="w-full accent-indigo-600 cursor-pointer h-1.5"/>
-          </div>
-          <div className="flex flex-col gap-2">
-            <label className="text-[10px] font-700 dk-text-muted uppercase tracking-widest flex items-center gap-1"><Maximize2 size={10}/> Kenar Payı</label>
-            <input type="range" min="0" max="30" value={pagePadding} onChange={e=>setPagePadding(parseInt(e.target.value))} className="w-full accent-pink-600 cursor-pointer h-1.5"/>
-          </div>
-          <button onClick={handleAutoFix} disabled={aiState==='processing'}
-            className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white px-5 py-2.5 rounded-xl text-sm font-700 flex gap-2 items-center justify-center shadow-sm transition-all active:scale-95 disabled:opacity-60">
-            {aiState==='processing'?<><RefreshCw size={15} className="animate-spin"/>İşleniyor</>:<><Wand2 size={15}/>Alfabe + Protokol Sırala</>}
-          </button>
-        </div>
-      </div>
-      <div className="flex justify-center pb-20 print-container">
-        <div className="print-page collage-print-strict bg-white shadow-2xl flex flex-col relative" style={{padding:`${pagePadding}mm`,boxSizing:'border-box'}}>
-          <div className="w-full mb-3 px-4 shrink-0">
-            <input value={projectTitle} onChange={e=>setProjectTitle(e.target.value)}
-              className="w-full text-center bg-transparent border-none outline-none font-comic font-black text-slate-900 tracking-tight"
-              style={{fontSize:cnt>12?'22px':'28px'}}/>
-          </div>
-          <div className="grid w-full gap-3 flex-1 min-h-0 overflow-hidden" style={{gridTemplateColumns:`repeat(${cols},1fr)`,gridTemplateRows:`repeat(${rows},1fr)`}}>
-            {volunteers.map((vol,idx)=>(
-              <div key={vol.id} className="relative flex flex-col items-center justify-center p-2 border border-slate-100 rounded-2xl bg-slate-50/20 group hover:border-indigo-300 transition-all overflow-hidden min-h-0">
-                <div className="absolute top-1 right-1 flex flex-col gap-1 no-print opacity-0 group-hover:opacity-100 transition-all z-40">
-                  <button onClick={()=>setConfirmModal({isOpen:true,isDanger:true,title:'Kolajdan Çıkar',message:`${vol.name} silinecek.`,onConfirm:()=>{const u=volunteers.filter(v=>v.id!==vol.id);syncVolunteers(u);setVolunteers(u);setConfirmModal(p=>({...p,isOpen:false}));},onCancel:()=>setConfirmModal(p=>({...p,isOpen:false}))})} className="p-1 bg-white text-red-500 rounded-full shadow-sm border border-red-50 hover:scale-110"><Trash2 size={10}/></button>
-                  <button onClick={()=>{const nv=[...volunteers];const t=idx-1;if(t>=0){const tmp=nv[idx];nv[idx]=nv[t];nv[t]=tmp;setVolunteers(nv);}}} disabled={idx===0} className="p-1 bg-white text-indigo-600 rounded-full shadow-sm border border-indigo-50 hover:scale-110 disabled:opacity-30"><ChevronUp size={10}/></button>
-                  <button onClick={()=>{const nv=[...volunteers];const t=idx+1;if(t<nv.length){const tmp=nv[idx];nv[idx]=nv[t];nv[t]=tmp;setVolunteers(nv);}}} disabled={idx===volunteers.length-1} className="p-1 bg-white text-indigo-600 rounded-full shadow-sm border border-indigo-50 hover:scale-110 disabled:opacity-30"><ChevronDown size={10}/></button>
-                </div>
-                <div className="relative w-full h-full min-h-0 mb-1 overflow-hidden rounded-xl bg-white border border-slate-100 shadow-sm flex items-center justify-center">
-                  <InteractivePhoto id={vol.id} src={vol.photo} scale={vol.scale} translateX={vol.translateX} translateY={vol.translateY} onUpdate={(id,s,x,y)=>setVolunteers(prev=>prev.map(v=>v.id===id?{...v,scale:s,translateX:x,translateY:y}:v))}/>
-                  {!vol.photo && <input type="file" accept="image/*" onChange={e=>{const f=e.target.files[0];if(f){const r=new FileReader();r.onload=ev=>setVolunteers(prev=>prev.map(v=>v.id===vol.id?{...v,photo:ev.target.result,scale:1,translateX:0,translateY:0}:v));r.readAsDataURL(f);}}} className="absolute inset-0 opacity-0 cursor-pointer z-30"/>}
-                  {vol.photo && (
-                    <label className="absolute top-1 left-1 no-print opacity-0 group-hover:opacity-100 transition-opacity p-2 bg-white/90 rounded-full text-indigo-600 cursor-pointer z-40 shadow-sm">
-                      <Upload size={12}/>
-                      <input type="file" accept="image/*" className="hidden" onChange={e=>{const f=e.target.files[0];if(f){const r=new FileReader();r.onload=ev=>setVolunteers(prev=>prev.map(v=>v.id===vol.id?{...v,photo:ev.target.result,scale:1,translateX:0,translateY:0}:v));r.readAsDataURL(f);}}}/>
-                    </label>
-                  )}
-                </div>
-                <div className="w-full px-1 text-center leading-none shrink-0">
-                  <textarea value={vol.name} onChange={e=>setVolunteers(prev=>prev.map(v=>v.id===vol.id?{...v,name:e.target.value}:v))}
-                    className="w-full text-center bg-transparent border-none outline-none font-comic font-bold text-slate-800 resize-none overflow-hidden p-0 m-0"
-                    style={{fontSize:`${globalNameSize}px`,height:'2.5em'}} rows={2}/>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="w-full shrink-0 flex flex-col items-center gap-1 bg-white pt-2 mt-auto">
-            <div className="flex items-center gap-4 text-indigo-600 font-black tracking-[0.2em] text-[16px]">
-              <span className="w-10 h-px bg-indigo-200"/>
-              <Smile size={20} className="text-indigo-400"/>
-              <span className="uppercase">MEKTUPLARINI BEKLİYORUZ</span>
-              <span className="w-10 h-px bg-indigo-200"/>
-            </div>
-            <div className="w-full border-t border-slate-200 pt-1 flex justify-center">
-              <input type="text" value={projectAddress} onChange={e=>setProjectAddress(e.target.value)}
-                className="w-full bg-transparent border-none outline-none font-sans text-slate-500 text-center font-500"
-                style={{fontSize:cnt>12?'11px':'15px'}}/>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── MODULE 4: RESMİ TUTANAK ──────────────────────────────────────────────────
-function DocumentCreator({ dark }) {
-  const [formData, setFormData] = useState({
-    no:'2026/01', date:new Date().toLocaleDateString('tr-TR'), topic:'Planlama',
-    location:'Salon A', participants:'Müdür, Yürütücü', decisions:'1. Karar 1\n2. Karar 2'
-  });
-  const set = (k,v) => setFormData(p=>({...p,[k]:v}));
-  return (
-    <div className="flex flex-col md:flex-row gap-6">
-      <div className="w-full md:w-72 shrink-0 dk-card border dk-border rounded-2xl shadow-sm p-5 print:hidden space-y-4">
-        <h3 className="text-base font-700 dk-text">Belge Bilgileri</h3>
-        {[{label:'Karar No',key:'no',ph:'2026/01'},{label:'Tarih',key:'date',ph:'GG.AA.YYYY'},{label:'Konu',key:'topic',ph:'Planlama'},{label:'Yer',key:'location',ph:'Salon A'},{label:'Katılımcılar',key:'participants',ph:'İsimler…'}].map(f=>(
-          <div key={f.key}>
-            <label className="block text-[10px] font-700 dk-text-muted uppercase tracking-widest mb-1">{f.label}</label>
-            <input className="w-full border dk-border p-2.5 rounded-xl text-sm font-500 dk-text focus:border-indigo-400 outline-none transition-colors dk-input"
-              placeholder={f.ph} value={formData[f.key]} onChange={e=>set(f.key,e.target.value)}/>
-          </div>
-        ))}
-        <div>
-          <label className="block text-[10px] font-700 dk-text-muted uppercase tracking-widest mb-1">Kararlar</label>
-          <textarea className="w-full border dk-border p-2.5 rounded-xl text-sm font-500 dk-text focus:border-indigo-400 outline-none h-52 resize-none transition-colors dk-input"
-            placeholder="Alınan kararlar…" value={formData.decisions} onChange={e=>set('decisions',e.target.value)}/>
-        </div>
-      </div>
-      <div className="flex-1 bg-white shadow-xl border border-slate-200 rounded-2xl p-14 print:shadow-none print:p-0 print:border-none print:rounded-none min-h-[297mm]">
-        <h1 className="text-center font-black text-xl border-b-4 border-slate-900 pb-4 mb-10 uppercase tracking-widest">Toplantı Tutanağı</h1>
-        <table className="w-full border-2 border-slate-900 mb-10 text-sm">
-          <tbody>
-            {[['Karar No',formData.no],['Tarih',formData.date],['Konu',formData.topic],['Yer',formData.location],['Katılımcılar',formData.participants]].map(([k,v])=>(
-              <tr key={k}>
-                <td className="border-2 border-slate-900 p-3 font-black bg-slate-100 w-1/4 whitespace-nowrap">{k}</td>
-                <td className="border-2 border-slate-900 p-3 font-500">{v}</td>
-              </tr>
-            ))}
-            <tr>
-              <td className="border-2 border-slate-900 p-3 font-black bg-slate-100 align-top">Kararlar</td>
-              <td className="border-2 border-slate-900 p-3 whitespace-pre-wrap h-72 align-top font-500 leading-relaxed">{formData.decisions}</td>
-            </tr>
-          </tbody>
-        </table>
-        <div className="flex justify-between mt-32 px-10">
-          <div className="text-center font-black">Raportör<div className="mt-10 border-t-2 border-slate-900 w-36"/></div>
-          <div className="text-center font-black">Onaylayan<div className="mt-10 border-t-2 border-slate-900 w-36"/></div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── ANA UYGULAMA ─────────────────────────────────────────────────────────────
 export default function ProkordiManagerApp() {
-  const [activeTab,    setActiveTab]    = useState('scheduler');
+  const [activeTab,    setActiveTab]    = useState('home');
+  const [dataVersion,setDataVersion]=useState(0);
+  const [sessions,setSessions]=useState(()=>{migrateSharedLibrary();return loadSessions();});
+  const [sessionId,setSessionId]=useState(()=>db.load('prokordi_active_session_v1','legacy'));
+  const changeSessions=useCallback(list=>{saveSessions(list);setSessions(list);},[]);
+  const selectSession=id=>{db.flush();db.save('prokordi_active_session_v1',id,0);setSessionId(id);};
   const [notification, setNotification] = useState(null);
   const [dark,         setDark]         = useState(() => db.load(DB_KEYS.DARK_MODE, false));
   const [cacheModal,   setCacheModal]   = useState(false);
 
   useEffect(() => { db.save(DB_KEYS.DARK_MODE, dark); }, [dark]);
+  useEffect(()=>{saveSessions(sessions);},[sessions]);
 
+  useEffect(()=>{const warn=()=>setNotification('Tarayıcı depolama alanı dolu. Değişiklikler henüz kalıcı kaydedilemedi; yedek indirin ve fotoğrafları küçültün.');window.addEventListener('prokordi-storage-error',warn);return()=>window.removeEventListener('prokordi-storage-error',warn);},[]);
+  useEffect(()=>{const refresh=e=>{if(e.key==='prokordi_sessions_v1')setSessions(loadSessions());setDataVersion(v=>v+1);};window.addEventListener('storage',refresh);return()=>window.removeEventListener('storage',refresh);},[]);
   const showNotify = msg => { setNotification(msg); setTimeout(()=>setNotification(null), 3500); };
+
+  useEffect(()=>{if(!cacheModal)return;const close=e=>{if(e.key==='Escape'){setCacheModal(false);e.preventDefault();}};window.addEventListener('keydown',close);return()=>window.removeEventListener('keydown',close);},[cacheModal]);
 
   const clearAllCache = () => {
     db.clearAll();
@@ -1783,16 +1194,16 @@ export default function ProkordiManagerApp() {
     scheduler: { label:'Program Yöneticisi', icon:<Calendar size={18}/> },
     badges:    { label:'İsimlik Matbaası',   icon:<Users size={18}/> },
     collage:   { label:'Görsel Kolaj',       icon:<ImageIcon size={18}/> },
-    minutes:   { label:'Resmi Tutanak',      icon:<FileText size={18}/> },
+    minutes:   { label:'Tikçi Listesi',      icon:<FileText size={18}/> },
   };
 
   const renderContent = () => {
     switch(activeTab) {
-      case 'scheduler': return <InfinityScheduler onNotify={showNotify} dark={dark}/>;
-      case 'badges':    return <NameTagApp onNotify={showNotify} dark={dark}/>;
-      case 'collage':   return <CollageApp onNotify={showNotify} dark={dark}/>;
-      case 'minutes':   return <DocumentCreator dark={dark}/>;
-      default:          return <InfinityScheduler onNotify={showNotify} dark={dark}/>;
+      case 'scheduler': return <InfinityScheduler key={sessionId} sessionId={sessionId} sessions={sessions} dataVersion={dataVersion} onNotify={showNotify} dark={dark}/>;
+      case 'badges':    return <NameBadges sessionId="legacy" onNotify={showNotify}/>;
+      case 'collage':   return <TeamCollage onNotify={showNotify}/>;
+      case 'minutes':   return <Checklist/>;
+      default:          return <InfinityScheduler key={sessionId} sessionId={sessionId} sessions={sessions} dataVersion={dataVersion} onNotify={showNotify} dark={dark}/>;
     }
   };
 
@@ -1803,29 +1214,35 @@ export default function ProkordiManagerApp() {
   const textPrimary = dark ? '#e2e8f0' : '#1e293b';
   const textMuted   = dark ? '#64748b' : '#94a3b8';
 
-  return (
-    <div style={{ display:'flex', height:'100vh', background:appBg, color:textPrimary, overflow:'hidden' }}>
-      <style>{buildCSS(dark)}</style>
-
-      {/* ── Cache Clear Modal ── */}
-      {cacheModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-fadeIn">
+  const resetDialog = cacheModal && (
+        <div role="dialog" aria-modal="true" aria-labelledby="reset-title" className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-fadeIn">
           <div className="rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-scaleIn dk-card dk-border border">
             <div className="flex items-center gap-3 mb-3">
               <div className="p-2.5 rounded-xl bg-red-50 text-red-500"><Database size={20}/></div>
-              <h3 className="text-base font-700 dk-text">Tüm Cache'i Temizle</h3>
+              <h3 id="reset-title" className="text-base font-700 dk-text">Tamamen sıfırla</h3>
             </div>
-            <p className="text-sm dk-text-muted mb-6 leading-relaxed">Tüm veriler (program, gönüllüler, etkinlikler, sohbet geçmişi) <strong className="text-red-500">kalıcı olarak</strong> silinecek ve uygulama sıfırlanacak.</p>
+            <p className="text-sm dk-text-muted mb-6 leading-relaxed">Bu tarayıcıdaki tüm ekipler, programlar, gönüllüler, etkinlikler, isimlikler, kolaj fotoğrafları, depo listesi, sohbetler ve ayarlar <strong className="text-red-500">kalıcı olarak</strong> silinecek. Geri alınamaz. Drive ve GitHub dosyalarına dokunulmaz.</p>
             <div className="flex justify-end gap-2">
-              <button onClick={()=>setCacheModal(false)} className="px-4 py-2 rounded-xl text-sm font-600 bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">İptal</button>
+              <button autoFocus onClick={()=>setCacheModal(false)} className="px-4 py-2 rounded-xl text-sm font-600 bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">İptal</button>
               <button onClick={clearAllCache} className="px-4 py-2 rounded-xl text-sm font-700 text-white bg-red-500 hover:bg-red-600 transition-all active:scale-95">Tümünü Sil ve Sıfırla</button>
             </div>
           </div>
         </div>
-      )}
+      );
 
+  if(activeTab==='home')return <><style>{buildCSS(false)}</style>{resetDialog}<Welcome onOpen={setActiveTab}><SessionBar sessions={sessions} currentId={sessionId} onSelect={selectSession} onChange={changeSessions}/><div className="welcome-reset"><button onClick={()=>setCacheModal(true)}>Tamamen sıfırla</button></div></Welcome></>;
+
+  return (
+    <div className="app-shell" data-theme={dark?'dark':'light'} data-section={activeTab} style={{ display:'flex', height:'100vh', background:appBg, color:textPrimary, overflow:'hidden' }}>
+      <style>{buildCSS(dark)}{`
+        .print-only {display:none}
+
+        @media print{html,body,#root,.app-shell,main,#printable-section{height:auto!important;min-height:0!important;overflow:visible!important;background:white!important;padding:0!important;margin:0!important;max-width:none!important;display:block!important}.app-sidebar{display:none!important}.print-document{margin:0!important;padding:0!important;display:block!important;transform:none!important}.print-document>div{margin:0!important}.screen-only{display:none!important}.print-only{display:block!important}.print-page{break-after:page;page-break-after:always}.print-page:last-child{break-after:auto;page-break-after:auto}[class*=space-y-] > *{margin-top:0!important;margin-bottom:0!important}.animate-fadeIn,.animate-scaleIn,.animate-slideUp{animation:none!important;transform:none!important}.collage-print-strict{break-after:page!important}.collage-print-strict:last-child{break-after:auto!important}}
+      `}</style>
+
+      {resetDialog}
       {/* ── Sidebar ── */}
-      <aside style={{ width:220, background:sidebarBg, borderRight:`1px solid ${borderClr}`, display:'flex', flexDirection:'column', zIndex:20 }} className="print:hidden shrink-0">
+      <aside className="app-sidebar print:hidden shrink-0" style={{ width:220, background:sidebarBg, borderRight:`1px solid ${borderClr}`, display:'flex', flexDirection:'column', zIndex:20 }} >
         {/* Logo */}
         <div style={{ padding:'18px 20px', borderBottom:`1px solid ${borderClr}` }}>
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
@@ -1835,33 +1252,22 @@ export default function ProkordiManagerApp() {
             <div>
               <div style={{ fontSize:13, fontWeight:800, color:textPrimary, letterSpacing:'-.02em', lineHeight:1.2 }}>ProKordi</div>
               <div style={{ fontSize:13, fontWeight:800, color:textPrimary, letterSpacing:'-.02em', lineHeight:1.2 }}>Manager</div>
-              <div style={{ fontSize:9, fontWeight:700, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.1em', marginTop:1 }}>B.A.L.K.I.Z. v5.0</div>
+              <div style={{ fontSize:9, fontWeight:700, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.1em', marginTop:1 }}>B.A.L.K.I.Z. v8.0</div>
             </div>
           </div>
         </div>
 
         {/* Nav */}
-        <nav style={{ flex:1, padding:'10px 12px', marginTop:8 }} className="space-y-1">
+        <nav aria-label="Ana bölümler" style={{ flex:1, padding:'10px 12px', marginTop:8 }} className="space-y-1">
+          <SidebarItem dark={dark} id="home" icon={<Sparkles size={16}/>} label="Başlangıç" active={activeTab} onClick={setActiveTab}/>
           <SidebarItem dark={dark} id="scheduler" icon={<Calendar size={16}/>}    label="Program"         active={activeTab} onClick={setActiveTab}/>
           <SidebarItem dark={dark} id="badges"    icon={<Users size={16}/>}       label="İsimlik"         active={activeTab} onClick={setActiveTab}/>
           <SidebarItem dark={dark} id="collage"   icon={<ImageIcon size={16}/>}   label="Görsel Kolaj"    active={activeTab} onClick={setActiveTab}/>
-          <SidebarItem dark={dark} id="minutes"   icon={<FileText size={16}/>}    label="Resmi Tutanak"   active={activeTab} onClick={setActiveTab}/>
+          <SidebarItem dark={dark} id="minutes"   icon={<FileText size={16}/>}    label="Tikçi Listesi"   active={activeTab} onClick={setActiveTab}/>
         </nav>
 
         {/* Footer tools */}
         <div style={{ padding:'12px', borderTop:`1px solid ${borderClr}` }} className="space-y-2">
-          {/* Dark mode toggle */}
-          <button onClick={()=>setDark(d=>!d)}
-            style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'8px 12px', borderRadius:12, border:'none', cursor:'pointer', background:dark?'rgba(99,102,241,.15)':'rgba(99,102,241,.06)', color:dark?'#a5b4fc':'#6366f1', transition:'all .2s' }}>
-            {dark ? <Sun size={15}/> : <Moon size={15}/>}
-            <span style={{ fontSize:12, fontWeight:600 }}>{dark?'Aydınlık Mod':'Karanlık Mod'}</span>
-          </button>
-          {/* Clear cache */}
-          <button onClick={()=>setCacheModal(true)}
-            style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'8px 12px', borderRadius:12, border:'none', cursor:'pointer', background:'rgba(239,68,68,.06)', color:'#ef4444', transition:'all .2s' }}>
-            <Trash size={15}/>
-            <span style={{ fontSize:12, fontWeight:600 }}>Cache'i Temizle</span>
-          </button>
           <div style={{ textAlign:'center', fontSize:9, color:textMuted, paddingTop:4 }}>
             © 2026 <a href="https://github.com/ragno-typhojem" target="_blank" rel="noopener noreferrer" style={{ color:'#6366f1', fontWeight:600 }}>Mustafa Berke Simsekler</a>
           </div>
@@ -1871,30 +1277,30 @@ export default function ProkordiManagerApp() {
       {/* ── Main ── */}
       <main style={{ flex:1, overflow:'auto', background:appBg, position:'relative' }} className="print:bg-white print:overflow-visible">
         {/* Header */}
-        <header style={{ background:headerBg, backdropFilter:'blur(12px)', borderBottom:`1px solid ${borderClr}`, height:60, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 24px', position:'sticky', top:0, zIndex:30, boxShadow:'0 1px 8px rgba(0,0,0,.04)' }} className="print:hidden no-print">
-          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+        <header style={{ background:headerBg, backdropFilter:'blur(12px)', borderBottom:`1px solid ${borderClr}`, height:60, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 24px', position:'sticky', top:0, zIndex:30, boxShadow:'0 1px 8px rgba(0,0,0,.04)' }} className="app-header print:hidden no-print">
+          <div style={{ display:'flex', alignItems:'center', gap:10,minWidth:0 }}>
             <div style={{ padding:8, background:dark?'rgba(99,102,241,.2)':'#eef2ff', borderRadius:12, color:'#6366f1' }}>
               {tabMeta[activeTab]?.icon}
             </div>
             <h2 style={{ fontSize:15, fontWeight:700, color:textPrimary }}>{tabMeta[activeTab]?.label}</h2>
           </div>
-          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <Saat dark={dark}/>
-            <button onClick={()=>window.print()}
-              style={{ display:'flex', alignItems:'center', gap:7, padding:'8px 16px', borderRadius:12, fontSize:13, fontWeight:700, color:'white', background:'#1e293b', border:'none', cursor:'pointer', boxShadow:'0 1px 4px rgba(0,0,0,.1)', transition:'all .2s' }}>
-              <Printer size={14}/> Yazdır
-            </button>
+          <div className="app-header-tools">
+            <span className="app-clock"><Saat dark={dark}/></span>
+            <button className="ui-tool" onClick={()=>setDark(d=>!d)} aria-label={dark?'Aydınlık mod':'Karanlık mod'}>{dark?<Sun size={15}/>:<Moon size={15}/>}<span>{dark?'Açık mod':'Koyu mod'}</span></button>
+            <button className="ui-tool danger" onClick={()=>setCacheModal(true)} aria-label="Tamamen sıfırla"><Trash size={15}/><span>Sıfırla</span></button>
+            <button className="ui-tool primary" onClick={()=>window.print()}><Printer size={15}/>Yazdır</button>
           </div>
         </header>
 
         {/* Content */}
         <div style={{ padding:24, minHeight:'calc(100vh - 60px)', maxWidth:1700, margin:'0 auto' }} id="printable-section" className="print:p-0">
+          {(activeTab==='scheduler')&&<SessionBar compact sessions={sessions} currentId={sessionId} onSelect={selectSession} onChange={changeSessions}/>}
           {renderContent()}
         </div>
 
         {/* Notification */}
         {notification && (
-          <div className="fixed bottom-6 right-6 animate-notification print:hidden z-50" style={{ background:'#0f172a', color:'white', padding:'12px 20px', borderRadius:16, boxShadow:'0 8px 32px rgba(0,0,0,.25)', display:'flex', alignItems:'center', gap:12, borderLeft:'4px solid #10b981' }}>
+          <div className="no-print fixed bottom-6 right-6 animate-notification print:hidden z-50" style={{ background:'#0f172a', color:'white', padding:'12px 20px', borderRadius:16, boxShadow:'0 8px 32px rgba(0,0,0,.25)', display:'flex', alignItems:'center', gap:12, borderLeft:'4px solid #10b981' }}>
             <CheckCircle2 size={17} style={{ color:'#10b981', flexShrink:0 }}/>
             <span style={{ fontSize:13, fontWeight:600 }}>{notification}</span>
           </div>
