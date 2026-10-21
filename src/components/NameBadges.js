@@ -13,6 +13,11 @@ export default function NameBadges({sessionId='legacy',onNotify}){
  const [selected,setSelected]=useState(people[0]?.id||'');
  const [revision,setRevision]=useState(0);
  const dims=badgeLayout(layout),chunks=paginate(people,dims.rows),pages=chunks.flatMap((items,chunk)=>layout.mode==='names'?[{items,type:'names',chunk}]:[{items,type:'names',chunk},{items,type:'back',chunk}]);
+ // Keep names inside the blank part of the supplied 1920 × 1080 artwork,
+ // accounting for object-fit:contain at every supported card size.
+ const artworkScale=Math.min(dims.width/1920,dims.height/1080);
+ const artworkWidth=1920*artworkScale,artworkHeight=1080*artworkScale;
+ const nameZone={left:((dims.width-artworkWidth)/2+artworkWidth*.14)+'mm',right:((dims.width-artworkWidth)/2+artworkWidth*.14)+'mm',top:((dims.height-artworkHeight)/2+artworkHeight*.24)+'mm',bottom:((dims.height-artworkHeight)/2+artworkHeight*.23)+'mm'};
  const person=people.find(v=>v.id===selected)||people[0];
  useEffect(()=>{db.save(keys.NAMETAG_VOLUNTEERS,people);syncSessionRoster(sessionId,people);},[people,sessionId,keys.NAMETAG_VOLUNTEERS]);
  useEffect(()=>{db.save('prokordi_fold_badge_v1',layout);},[layout]);
@@ -31,7 +36,7 @@ export default function NameBadges({sessionId='legacy',onNotify}){
   <LayoutFeedback targetRef={layoutRef} onFix={()=>{setLayout(p=>({...p,width:86,height:54}));setRevision(v=>v+1);onNotify('Kart ölçüsü ve yazılar güvenli A4 alanına sığdırıldı.');}}/>
   <div className="preview-heading no-print"><span>3 · Baskı önizlemesi</span><span>A4 dikey · {pages.length} sayfa</span></div>
   <div ref={layoutRef} className="fold-pages overflow-x-auto space-y-6">{pages.map(({items,type,chunk},index)=><section data-page-type={type} data-chunk={chunk} key={index} className="print-page fold-page bg-white mx-auto shadow-lg" style={{'--badge-padding':dims.padding+'mm',padding:dims.padding+'mm',boxSizing:'border-box',height:'296mm',minHeight:'296mm'}}>
-    <div style={{display:'flex',flexDirection:'column',gap:dims.gap+'mm',alignItems:'center'}}>{items.map(v=><div className="fold-row" key={v.id} style={{display:'flex',width:dims.unfoldedWidth+'mm',height:dims.height+'mm'}}>{[0,1].map(side=><div data-fit-card data-badge-name={type==='names'?v.name:undefined} key={side} className="badge-face" style={{width:dims.width+'mm',height:dims.height+'mm',borderLeft:side?'0.2mm dashed #64748b':undefined}}><img src={type==='names'?'/nametags/front.png':'/nametags/back.png'} alt=""/>{type==='names'&&<div className="name-zone"><FitText key={revision} text={v.name} max={v.badgeFontSize||layout.fontSize} min={9}/></div>}</div>)}</div>)}</div>
+    <div style={{display:'flex',flexDirection:'column',gap:dims.gap+'mm',alignItems:'center'}}>{items.map(v=><div className="fold-row" key={v.id} style={{display:'flex',width:dims.unfoldedWidth+'mm',height:dims.height+'mm'}}>{[0,1].map(side=><div data-fit-card data-badge-name={type==='names'?v.name:undefined} key={side} className="badge-face" style={{width:dims.width+'mm',height:dims.height+'mm',borderLeft:side?'0.2mm dashed #64748b':undefined}}><img src={type==='names'?'/nametags/front.png?v=20261021':'/nametags/back.png'} alt=""/>{type==='names'&&<div className="name-zone" style={nameZone}><FitText key={revision} text={v.name} max={v.badgeFontSize||layout.fontSize} min={9}/></div>}</div>)}</div>)}</div>
   </section>)}</div>
  </div>;
 }
